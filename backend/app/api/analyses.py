@@ -26,6 +26,10 @@ router = APIRouter(prefix="/api", tags=["analyses"])
 # The four raw inputs, in upload-field order.
 _FILE_ROLES = ("concentration", "notes", "temperature", "pressure")
 
+# Per-file upload cap (~50 MB, per the brief).
+MAX_UPLOAD_MB = 50
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
 
 def _to_detail(analysis: Analysis, spot_count: int) -> AnalysisDetail:
     return AnalysisDetail(
@@ -81,6 +85,16 @@ async def create_analysis(
             )
 
     contents = {role: await uploads[role].read() for role in _FILE_ROLES}  # type: ignore[union-attr]
+
+    # Reject oversized uploads (protects memory / disk on this local box).
+    for role in _FILE_ROLES:
+        if len(contents[role]) > MAX_UPLOAD_BYTES:
+            raise api_error(
+                422,
+                "file_too_large",
+                f"The {role} file exceeds the {MAX_UPLOAD_MB} MB limit.",
+                field=role,
+            )
 
     # 2. The concentration file really is a LI-7810 export.
     conc_name = concentration.filename if concentration else "concentration"

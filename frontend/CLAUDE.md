@@ -55,7 +55,7 @@ Lint, format, type-check, and tests must be **green before every commit**.
 
 ## Layout (`src/`)
 ```
-api/          typed client + types + mocks (the backend seam; TODO: connect to API)
+api/          typed fetch client (client.ts) + types (the backend seam)
 pages/        Home, Upload, ConfirmNotes, Results, SpotDetail, ProcessingLog, ...
 components/    shared UI (Button, Card, Stepper, RegressionPlot, states, ...)
 hooks/        reusable hooks (e.g. useAsync)

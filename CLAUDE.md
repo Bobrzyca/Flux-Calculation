@@ -26,10 +26,9 @@ config, and run commands) and has its own standing instructions:
   by the app. *(may not exist yet — added as an early build step.)*
 
 **How they fit together:** the frontend talks to the backend over **HTTP under the
-`/api` prefix** (via the typed client in `frontend/src/api/`); until the real
-endpoints exist the client returns mock data (`TODO: connect to API`). The backend
-is **local and single-user** — no auth, one SQLite file per install, run on the
-researcher's own machine. **Secrets** (e.g. the LLM API key) live in
+`/api` prefix** (via the typed `fetch` client in `frontend/src/api/client.ts`,
+base URL `VITE_API_BASE_URL`). The backend is **local and single-user** — no auth,
+one SQLite file per install, run on the researcher's own machine. **Secrets** (e.g. the LLM API key) live in
 `backend/.env`, which is git-ignored and **never committed**; `backend/.env.example`
 documents the keys with empty values.
 

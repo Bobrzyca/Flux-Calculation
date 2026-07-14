@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
@@ -80,6 +81,16 @@ def test_get_one_and_404(client: TestClient) -> None:
     missing = client.get("/api/analyses/nope")
     assert missing.status_code == 404
     assert missing.json()["detail"]["code"] == "not_found"
+
+
+def test_oversized_file_returns_422(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Shrink the cap so the small sample files trip it (avoids a 50 MB fixture).
+    monkeypatch.setattr("app.api.analyses.MAX_UPLOAD_BYTES", 10)
+    resp = client.post("/api/analyses", data=sample_form(), files=sample_files())
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "file_too_large"
 
 
 def test_delete_removes_analysis_and_files(client: TestClient) -> None:

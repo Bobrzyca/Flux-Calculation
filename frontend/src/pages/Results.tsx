@@ -128,7 +128,9 @@ export function Results() {
         </Button>
       </div>
 
-      {/* Quality check summary */}
+      {/* Quality check summary.
+          TODO: n8n quality check (later seminar) — the backend returns
+          available:false for now; this "unavailable" branch is the current path. */}
       {results.data &&
         (results.data.quality_check.available ? (
           <Banner tone="info" title="Quality check">

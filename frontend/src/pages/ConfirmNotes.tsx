@@ -157,6 +157,8 @@ export function ConfirmNotes() {
         </p>
       </div>
 
+      {/* TODO: LLM field-notes parser (seminar 6) — the deterministic backend
+          parser always succeeds today, so parse_failed is currently false. */}
       {data?.parse_failed ? (
         <Banner tone="warning" title="Automatic parsing failed">
           Please check the times below manually before continuing.
