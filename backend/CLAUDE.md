@@ -87,6 +87,16 @@ demo; `sample_data/generate_samples.py` regenerates them deterministically. The
 notes/pressure parsers are deterministic and cover well-formed files only; tolerant
 parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
 
+The `flux/` package is the scientific core (pure, **never LLM-touched**):
+`regression.py` (`fit_slope` via `scipy.stats.linregress`), `flux.py`
+(`compute_flux` → the `FluxLadder`, closed-chamber formula `F = dC/dt · P·V/(R·T·A)`,
+CH₄ ppb→ppm, CO₂-equivalent via GWP), `pipeline.py` (`fit_spot`: window
+start+30 s→+5 min 30 s, nan drop/count, `low_r2`/`short_window` flags), and
+`constants.py` (gas constants, molar masses, GWP, thresholds — the tunable numbers).
+**Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`;
+`reference/` (the R method-of-record) isn't in the repo yet — `# TODO: re-validate
+against R` on the 2026-07-02 Kampinos campaign once it lands.
+
 Persistence lives in `app/db/`: `models.py` (SQLModel tables), `session.py` (the
 engine, `get_session` dependency, and `create_db_and_tables`, called from the
 startup lifespan in `main.py`), and `storage.py` (raw-file storage helpers). Raw
