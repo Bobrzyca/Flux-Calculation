@@ -19,8 +19,11 @@ transformation is exposed for supervision (per-spot regression plots, a processi
 - React 19 + **Vite** + **TypeScript**, Tailwind CSS for styling.
 - **Plotly** (`react-plotly.js`) for the per-spot regression plot (zoom/pan).
 - Package manager: **npm** (matches the server's installed toolchain).
-- Test runner: **Vitest** + React Testing Library **(assumption)**.
-- Lint/format: **ESLint** + **Prettier** **(assumption)**.
+- Test runner: **Vitest** + React Testing Library.
+- Lint/format: **oxlint** + **Prettier**. (The current Vite `react-ts` template
+  ships oxlint, not ESLint, so we kept it and added Prettier for formatting.)
+- Routing: **react-router-dom** v7. Path alias `@/*` → `src/*` (Vite + tsconfig).
+- Plotly is loaded lazily (`React.lazy`) so it stays in its own code-split chunk.
 
 **Backend**
 - **Python 3.14** + **FastAPI**, served with **uvicorn**.
@@ -103,8 +106,11 @@ _Fill in as each app is scaffolded._
 **Frontend** (from `frontend/`)
 - Install: `npm install`
 - Dev: `npm run dev`
-- Test: `npm test`
-- Lint/format/types: `npm run lint && npm run format:check && npx tsc --noEmit`
+- Build: `npm run build`
+- Test: `npm test` (watch: `npm run test:watch`)
+- Lint/format/types: `npm run lint && npm run format:check && npm run typecheck`
+- Runs on **mock data only** this phase (see `src/api/`); real endpoints are
+  marked `TODO: connect to API` in `src/api/client.ts`.
 
 ## Definition of done
 A change is done when: the relevant tests pass, lint/format/type-check are clean, the

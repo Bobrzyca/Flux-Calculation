@@ -1,0 +1,153 @@
+@import 'tailwindcss';
+
+/* Manual + system dark mode: `.dark` class on <html> (set by ThemeProvider). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens from assignment/frontend.md.
+ * Theme-dependent values live on :root / .dark as raw CSS vars; @theme inline
+ * maps them to Tailwind color/utility tokens so `bg-surface`, `text-muted`,
+ * `border-border`, `text-primary` etc. all work and swap with the theme.
+ */
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --text: #1e293b;
+  --muted: #64748b;
+  --border: #e2e8f0;
+
+  --primary: #0f766e;
+  --primary-hover: #115e59;
+  --primary-tint: #ccfbf1;
+  --primary-subtle: #f0fdfa;
+  --secondary: #92400e;
+  --cta: #f59e0b;
+  --cta-hover: #d97706;
+
+  --success: #15803d;
+  --success-tint: #dcfce7;
+  --warning: #b45309;
+  --warning-tint: #fef3c7;
+  --danger: #b91c1c;
+  --danger-tint: #fee2e2;
+  --info: #0f766e;
+  --info-tint: #f0fdfa;
+
+  /* data-viz */
+  --viz-co2: #0f766e;
+  --viz-ch4: #92400e;
+  --viz-muted: #94a3b8;
+}
+
+.dark {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #334155;
+
+  --primary: #2dd4bf;
+  --primary-hover: #5eead4;
+  --primary-tint: #134e4a;
+  --primary-subtle: #0b3b38;
+  --secondary: #d6a06a;
+  --cta: #fbbf24;
+  --cta-hover: #f59e0b;
+
+  --success: #4ade80;
+  --success-tint: #14532d;
+  --warning: #fbbf24;
+  --warning-tint: #422006;
+  --danger: #f87171;
+  --danger-tint: #450a0a;
+  --info: #2dd4bf;
+  --info-tint: #0b3b38;
+
+  --viz-co2: #2dd4bf;
+  --viz-ch4: #d6a06a;
+  --viz-muted: #64748b;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-tint: var(--primary-tint);
+  --color-primary-subtle: var(--primary-subtle);
+  --color-secondary: var(--secondary);
+  --color-cta: var(--cta);
+  --color-cta-hover: var(--cta-hover);
+
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
+
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+
+  /* radii: inputs/buttons 8px, cards/modals 12px */
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    line-height: 1.25;
+    color: var(--text);
+  }
+
+  /* Tabular numerals for all numeric data (flux, R², times). */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Visible focus ring on every interactive element (a11y). */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
