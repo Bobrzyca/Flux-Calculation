@@ -17,8 +17,8 @@ transformation is exposed for supervision (per-spot regression plots, a processi
 ### Two apps, one repo
 This is a **two-app monorepo**; each app is self-contained (its own deps, tests,
 config, and run commands) and has its own standing instructions:
-- **`frontend/`** — React 19 + Vite + TypeScript UI (Tailwind, Plotly). Already
-  built; runs on **mock data** this phase. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md).
+- **`frontend/`** — React 19 + Vite + TypeScript UI (Tailwind, Plotly), talking to
+  the backend over HTTP. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md).
 - **`backend/`** — Python 3.14 + FastAPI app (parsing, matching, flux math, API).
   See [`backend/CLAUDE.md`](backend/CLAUDE.md).
 - **`reference/`** — the original R script, cleaned to run on the repo's sample
@@ -133,8 +133,9 @@ _Fill in as each app is scaffolded._
 - Build: `npm run build`
 - Test: `npm test` (watch: `npm run test:watch`)
 - Lint/format/types: `npm run lint && npm run format:check && npm run typecheck`
-- Runs on **mock data only** this phase (see `src/api/`); real endpoints are
-  marked `TODO: connect to API` in `src/api/client.ts`.
+- Talks to the **real backend** over HTTP (`src/api/client.ts`); base URL is
+  `VITE_API_BASE_URL` (default `http://localhost:8000/api`). Run `uvicorn` in
+  `backend/` alongside `npm run dev`. Tests use a fetch stub (no live backend).
 
 ## Definition of done
 A change is done when: the relevant tests pass, lint/format/type-check are clean, the

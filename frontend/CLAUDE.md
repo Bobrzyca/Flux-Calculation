@@ -10,13 +10,25 @@ flow **Upload → Confirm → Results**, plus per-spot detail and a processing-l
 that open from Results, and a Home list of saved analyses. Tone: a competent,
 friendly field colleague — plain sentences, no jargon, every transformation visible.
 
-## Phase note: mock data only
-This app currently runs on **mock data**. Everything that will talk to the backend
-goes through the typed client in **`src/api/`**; the seams are marked
-**`TODO: connect to API`** in `src/api/client.ts`, with the mock shapes in
-`src/api/mocks/`. The backend is a black box behind that client — the UI never
-assumes backend internals. When wiring the real API, it lives under the **`/api`**
-prefix over HTTP.
+## Talking to the backend
+The app runs on the **real FastAPI backend** over HTTP. All calls go through the
+typed client in **`src/api/client.ts`** (`fetch`); the base URL is
+**`VITE_API_BASE_URL`** (default `http://localhost:8000/api`, set in `.env` — see
+`.env.example`, git-ignored). The backend is a black box behind the client — the UI
+never assumes internals. Backend errors arrive as `{"detail": {code, message,
+field?}}` and become an `ApiError { code, field }` so the Upload screen highlights
+the right field (409 duplicate name, 422 missing-file / bad-LI-7810).
+
+Run the backend (`uvicorn app.main:app --reload` in `backend/`) alongside
+`npm run dev`; keep the backend's `CORS_ORIGINS` in sync with the dev origin.
+
+**Deferred features keep their placeholders** end-to-end: `quality_check.available
+=== false` → "quality check unavailable" (n8n, `TODO: later seminar`);
+`parse_failed` fallback on Confirm (LLM parser, `TODO: seminar 6`). Neither is built.
+
+**Tests** don't need a live backend: a fetch stub (`src/test/apiMock.ts`, installed
+in `src/test/setup.ts`) serves the fixtures in `src/test/mockData.ts`. Those
+fixtures are **test-only** — nothing in the app's runtime imports them.
 
 ## Tech stack
 - **React 19** + **Vite** + **TypeScript**; **Tailwind CSS** (`@tailwindcss/vite`).
