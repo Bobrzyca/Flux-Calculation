@@ -77,7 +77,11 @@ flux/         regression + closed-chamber flux + unit ladder (pure)
 db/           SQLModel models, session, migrations
 schemas/      Pydantic request/response models
 ```
-`tests/` mirrors this layout; `sample_data/` holds small fixture files for tests.
+`tests/` mirrors this layout. `sample_data/` holds small, realistic parser
+fixtures (`li7810_sample.txt`, `temperature_sample.xlsx`, …) used by tests and the
+demo; `sample_data/generate_samples.py` regenerates them deterministically. The
+`parsing/` modules are pure functions (no FastAPI): `li7810.py` (`parse_li7810`,
+`looks_like_li7810`) and `temperature.py` (`parse_temperature`).
 
 Persistence lives in `app/db/`: `models.py` (SQLModel tables), `session.py` (the
 engine, `get_session` dependency, and `create_db_and_tables`, called from the
