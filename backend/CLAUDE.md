@@ -77,6 +77,12 @@ All four must be **green before every commit** (root rule 2). Write or update a
   `PUT /api/analyses/{id}/notes` (body: `NoteRow[]`) replaces the spot set with the
   confirmed/edited rows, re-validates, and returns the saved `ParsedNotes` (404 if
   the analysis is missing).
+- `POST /api/analyses/{id}/match` — the pipeline core: parse stored files → apply
+  offset → per-spot slice + attach temp/pressure → fit both gases → persist
+  `Reading` + `FluxResult` + `ProcessingLogEntry` → status `complete`. Skips
+  empty-window / stop-before-start spots (logged). **Idempotent**: clears the
+  previous run's rows first. Returns a `MatchSummary`. The router is thin — all
+  math is in `flux/` + `matching/`.
 
 **Pipeline overview** (the end-to-end flow the endpoints assemble):
 ```

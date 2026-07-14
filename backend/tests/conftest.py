@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -23,15 +24,20 @@ SAMPLE_DIR = Path(__file__).resolve().parent.parent / "sample_data"
 
 
 @pytest.fixture
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Engine:
+    """A throwaway in-memory DB (StaticPool, shared across sessions) + temp data dir."""
     monkeypatch.setattr(settings, "data_dir", str(tmp_path / "data"))
-    engine = create_engine(
+    eng = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(eng)
+    return eng
 
+
+@pytest.fixture
+def client(engine: Engine) -> Iterator[TestClient]:
     def _session_override() -> Iterator[Session]:
         with Session(engine) as session:
             yield session
@@ -39,6 +45,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     app.dependency_overrides[get_session] = _session_override
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def session(engine: Engine) -> Iterator[Session]:
+    """A session on the same engine as ``client``, for asserting DB state in tests."""
+    with Session(engine) as sess:
+        yield sess
 
 
 def sample_files(

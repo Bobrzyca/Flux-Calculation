@@ -1,0 +1,185 @@
+"""Match & compute endpoint — where the pure modules come together.
+
+``POST /api/analyses/{id}/match`` parses the stored files, applies the offset,
+slices per-spot windows, attaches temperature/pressure, fits both gases, computes
+the ladder, and persists Reading + FluxResult + processing-log rows. Re-running
+clears the previous results first (supports the overwrite re-run). The endpoint
+stays thin — all math lives in ``flux/`` and ``matching/``.
+"""
+
+import pandas as pd
+from fastapi import APIRouter, Depends
+from sqlmodel import Session
+
+from app.api.errors import api_error
+from app.db import storage
+from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading
+from app.db.session import get_session
+from app.flux.pipeline import fit_spot
+from app.matching.match import match_spot
+from app.parsing.li7810 import parse_li7810
+from app.parsing.pressure import parse_pressure
+from app.parsing.temperature import parse_temperature
+from app.schemas.match import MatchSummary
+
+router = APIRouter(prefix="/api", tags=["match"])
+
+
+def _num(value: float) -> float | None:
+    """Map a pandas nan to SQL NULL; otherwise a plain float."""
+    return None if pd.isna(value) else float(value)
+
+
+def _clear_previous(session: Session, analysis: Analysis) -> None:
+    """Drop prior Reading/FluxResult/log rows so a re-run recomputes cleanly."""
+    for spot in analysis.spots:
+        for reading in spot.readings:
+            session.delete(reading)
+        for flux in spot.flux_results:
+            session.delete(flux)
+    for entry in analysis.log_entries:
+        session.delete(entry)
+    session.flush()
+    # Reload the analysis's relationship collections so they no longer reference
+    # the just-deleted rows (which would break the later commit's cascade).
+    session.expire(analysis)
+
+
+@router.post("/analyses/{analysis_id}/match", response_model=MatchSummary)
+def run_match(
+    analysis_id: str, session: Session = Depends(get_session)
+) -> MatchSummary:
+    analysis = session.get(Analysis, analysis_id)
+    if analysis is None:
+        raise api_error(404, "not_found", f"Analysis {analysis_id} not found.")
+
+    roles = ("concentration", "temperature", "pressure")
+    paths = {role: storage.find_stored(analysis_id, role) for role in roles}
+    missing = [role for role, path in paths.items() if path is None]
+    if missing:
+        raise api_error(
+            422,
+            "missing_stored_file",
+            f"Stored file(s) missing: {', '.join(missing)}.",
+        )
+    conc_path, temp_path, press_path = (paths[r] for r in roles)
+    assert conc_path and temp_path and press_path  # validated just above
+
+    readings = parse_li7810(conc_path)
+    temperature = parse_temperature(temp_path)
+    pressure = parse_pressure(press_path)
+
+    _clear_previous(session, analysis)
+
+    logs: list[tuple[str, str]] = []
+    offset = analysis.time_offset_seconds
+    logs.append(
+        ("info", f"Applied time-offset {offset:+g} s to {len(readings)} readings")
+    )
+
+    spots = sorted(analysis.spots, key=lambda s: s.nr)
+    spots_computed = 0
+    flux_count = 0
+
+    for spot in spots:
+        matched = match_spot(
+            spot.nr,
+            readings,
+            spot.start_time,
+            spot.stop_time,
+            analysis.work_date,
+            offset,
+            temperature,
+            pressure,
+        )
+        logs.extend((m.severity, m.message) for m in matched.logs)
+        if matched.skipped:
+            continue
+
+        window = matched.readings
+        for row in window.itertuples(index=False):
+            session.add(
+                Reading(
+                    spot_id=spot.id,
+                    timestamp=float(row.timestamp),
+                    co2_ppm=_num(row.co2_ppm),
+                    ch4_ppb=_num(row.ch4_ppb),
+                    temperature_used=matched.temperature_used,
+                    pressure_used=matched.pressure_used,
+                )
+            )
+
+        if matched.temperature_used is None or matched.pressure_used is None:
+            logs.append(
+                (
+                    "warning",
+                    f"Spot {spot.nr}: flux not computed (missing temp/pressure)",
+                )
+            )
+            spots_computed += 1
+            continue
+
+        results = fit_spot(
+            window,
+            analysis.chamber_area_m2,
+            analysis.chamber_volume_l,
+            matched.temperature_used,
+            matched.pressure_used,
+        )
+        for gas, gr in results.items():
+            if gr.skipped or gr.fit is None or gr.ladder is None:
+                logs.append(
+                    ("warning", f"Spot {spot.nr} {gas}: skipped ({gr.skip_reason})")
+                )
+                continue
+            ladder = gr.ladder
+            session.add(
+                FluxResult(
+                    spot_id=spot.id,
+                    gas=gas,
+                    slope=gr.fit.slope,
+                    r2=gr.fit.r2,
+                    flux_umol_m2_s=ladder.umol_m2_s,
+                    flux_umol_m2_h=ladder.umol_m2_h,
+                    flux_mol_m2_h=ladder.mol_m2_h,
+                    flux_gC_m2_day=ladder.gC_m2_day,
+                    flux_kg_m2_h=ladder.kg_m2_h,
+                    flux_kg_ha_h=ladder.kg_ha_h,
+                    flux_kg_ha_day=ladder.kg_ha_day,
+                    flux_kg_ha_year=ladder.kg_ha_year,
+                    flux_Mg_ha_year=ladder.Mg_ha_year,
+                    flux_Mg_ha_year_co2equiv=ladder.Mg_ha_year_co2equiv,
+                    n_points=gr.fit.n_points,
+                )
+            )
+            flux_count += 1
+            if gr.n_dropped_nan:
+                total = gr.n_points + gr.n_dropped_nan
+                logs.append(
+                    (
+                        "info",
+                        f"Spot {spot.nr} {gas}: {gr.n_dropped_nan} of {total} "
+                        "readings dropped (nan)",
+                    )
+                )
+            for flag in gr.flags:
+                logs.append(("warning", f"Spot {spot.nr} {gas}: {flag}"))
+        spots_computed += 1
+
+    for severity, message in logs:
+        session.add(
+            ProcessingLogEntry(
+                analysis_id=analysis_id, severity=severity, message=message
+            )
+        )
+    analysis.status = "complete"
+    session.add(analysis)
+    session.commit()
+
+    return MatchSummary(
+        status="complete",
+        spots_total=len(spots),
+        spots_computed=spots_computed,
+        spots_skipped=len(spots) - spots_computed,
+        flux_results=flux_count,
+    )
