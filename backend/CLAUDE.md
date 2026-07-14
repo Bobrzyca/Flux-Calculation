@@ -81,7 +81,11 @@ schemas/      Pydantic request/response models
 fixtures (`li7810_sample.txt`, `temperature_sample.xlsx`, …) used by tests and the
 demo; `sample_data/generate_samples.py` regenerates them deterministically. The
 `parsing/` modules are pure functions (no FastAPI): `li7810.py` (`parse_li7810`,
-`looks_like_li7810`) and `temperature.py` (`parse_temperature`).
+`looks_like_li7810`), `temperature.py` (`parse_temperature`), `notes.py`
+(`parse_notes` + `validate_notes` producing the `NoteFlag`s; CSV/XLSX/DOCX, English
++ simple Polish headers), and `pressure.py` (`parse_pressure`, hPa). The
+notes/pressure parsers are deterministic and cover well-formed files only; tolerant
+parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
 
 Persistence lives in `app/db/`: `models.py` (SQLModel tables), `session.py` (the
 engine, `get_session` dependency, and `create_db_and_tables`, called from the
