@@ -46,10 +46,13 @@ def test_match_computes_and_persists(client: TestClient, session: Session) -> No
     assert spots[3].readings == [] and spots[3].flux_results == []
     assert spots[4].readings == [] and spots[4].flux_results == []
 
-    # The processing log recorded the run (offset + a skip line at least).
+    # The processing log recorded the run: offset, a skip, the matched
+    # temperature/pressure, and a per-gas fit summary.
     messages = [e.message for e in analysis.log_entries]
     assert any("time-offset" in m for m in messages)
     assert any("skipped" in m.lower() for m in messages)
+    assert any("matched temperature" in m for m in messages)
+    assert any("slope=" in m and "R²=" in m for m in messages)
 
 
 def test_low_r2_spot_still_computes(client: TestClient, session: Session) -> None:

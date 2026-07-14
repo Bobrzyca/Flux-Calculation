@@ -18,6 +18,10 @@ from app.parsing.pressure import PressureReading
 # Per-spot flag emitted here (mirrors the frontend SpotFlag union).
 NO_PRESSURE = "no_pressure"
 
+# The brief wants temperature matched "nearest ≤ ~30 s"; if the closest reading
+# is further than this we still use it but warn so the supervisor can see it.
+TEMP_NEAR_GAP_S = 30.0
+
 
 @dataclass
 class LogMessage:
@@ -147,6 +151,16 @@ def match_spot(
     if pressure_used is None:
         flags.append(NO_PRESSURE)
         logs.append(LogMessage("warning", f"Spot {nr}: no pressure available"))
+    if temperature_used is not None and not temperature.empty:
+        gap = float((temperature["timestamp"].astype(float) - start_unix).abs().min())
+        if gap > TEMP_NEAR_GAP_S:
+            logs.append(
+                LogMessage(
+                    "warning",
+                    f"Spot {nr}: nearest temperature is {gap:.0f}s away "
+                    f"(> {TEMP_NEAR_GAP_S:.0f}s)",
+                )
+            )
 
     annotated = window.copy()
     annotated["temperature_used"] = temperature_used

@@ -119,6 +119,14 @@ def run_match(
             spots_computed += 1
             continue
 
+        logs.append(
+            (
+                "info",
+                f"Spot {spot.nr}: matched temperature "
+                f"{matched.temperature_used:.2f} °C, pressure "
+                f"{matched.pressure_used:.1f} hPa to {len(window)} readings",
+            )
+        )
         results = fit_spot(
             window,
             analysis.chamber_area_m2,
@@ -153,6 +161,13 @@ def run_match(
                 )
             )
             flux_count += 1
+            logs.append(
+                (
+                    "info",
+                    f"Spot {spot.nr} {gas}: slope={gr.fit.slope:.5g}, "
+                    f"R²={gr.fit.r2:.3f}, n={gr.fit.n_points}",
+                )
+            )
             if gr.n_dropped_nan:
                 total = gr.n_points + gr.n_dropped_nan
                 logs.append(
