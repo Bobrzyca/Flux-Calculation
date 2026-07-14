@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import analyses
 from app.core.config import settings
 from app.db.session import create_db_and_tables
 
@@ -39,3 +40,6 @@ app.add_middleware(
 def health() -> dict[str, str]:
     """Liveness probe used by tests and ops."""
     return {"status": "ok", "app": settings.app_name}
+
+
+app.include_router(analyses.router)

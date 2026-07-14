@@ -6,6 +6,7 @@ the original file extension. Keeping the raw bytes lets any campaign be re-run
 later (per the brief). Kept free of FastAPI types so routers stay thin.
 """
 
+import shutil
 from pathlib import Path
 
 from app.core.config import settings
@@ -40,6 +41,13 @@ def save_upload(analysis_id: str, role: str, filename: str, content: bytes) -> P
 def read_stored(path: Path) -> bytes:
     """Read a previously stored file back as raw bytes."""
     return Path(path).read_bytes()
+
+
+def delete_analysis_files(analysis_id: str) -> None:
+    """Remove an analysis's stored-files directory (no-op if it doesn't exist)."""
+    directory = analysis_dir(analysis_id)
+    if directory.is_dir():
+        shutil.rmtree(directory)
 
 
 def find_stored(analysis_id: str, role: str) -> Path | None:

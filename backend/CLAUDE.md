@@ -58,6 +58,20 @@ All four must be **green before every commit** (root rule 2). Write or update a
 - **Pure logic stays out of routers.** Parsing, matching, and flux math live in
   `app/parsing/`, `app/matching/`, `app/flux/` as plain, testable functions;
   routers orchestrate and translate to/from schemas.
+- **Errors** use `app/api/errors.py:api_error(...)` → body
+  `{"detail": {code, message, field?}}` so the frontend rebuilds its
+  `ApiError { code, field }`.
+
+**Endpoints so far:**
+- `GET /api/health` — liveness.
+- `POST /api/analyses` — multipart (`name, work_date, chamber_area_m2,
+  chamber_volume_l, time_offset_seconds` + files `concentration, notes,
+  temperature, pressure`). 422 `missing_file`/`bad_li7810`, 409 `duplicate_name`;
+  on success stores the files, creates the `Analysis` (status `needs_review`), and
+  parses notes into unconfirmed `Spot` rows.
+- `GET /api/analyses` — summaries, newest first. `GET /api/analyses/{id}` — one
+  (404). `DELETE /api/analyses/{id}` — removes the analysis, its children, and its
+  stored files (204).
 
 **Pipeline overview** (the end-to-end flow the endpoints assemble):
 ```

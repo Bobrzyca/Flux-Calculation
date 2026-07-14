@@ -46,6 +46,19 @@ target-version = "py314"
 # pycodestyle, pyflakes, isort, pyupgrade, flake8-bugbear
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are called in argument defaults by design; this
+# is the idiomatic pattern, so exempt them from B008.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.Path",
+    "fastapi.Header",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
