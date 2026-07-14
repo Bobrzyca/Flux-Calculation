@@ -13,12 +13,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.db.session import create_db_and_tables
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Startup/shutdown hooks. Ensure the data directory exists."""
+    """Startup/shutdown hooks: ensure the data dir exists and tables are created."""
     Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
+    create_db_and_tables()
     yield
 
 

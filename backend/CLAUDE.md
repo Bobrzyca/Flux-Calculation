@@ -78,24 +78,36 @@ db/           SQLModel models, session, migrations
 schemas/      Pydantic request/response models
 ```
 `tests/` mirrors this layout; `sample_data/` holds small fixture files for tests.
-Raw uploaded files are stored on disk under **`data/`** (created on startup, path
-from `DATA_DIR`) and referenced by the `Analysis`, so any campaign can be re-run.
-The SQLite DB defaults to `data/flux.db` (`DATABASE_URL`).
+
+Persistence lives in `app/db/`: `models.py` (SQLModel tables), `session.py` (the
+engine, `get_session` dependency, and `create_db_and_tables`, called from the
+startup lifespan in `main.py`), and `storage.py` (raw-file storage helpers). Raw
+uploaded files are kept on disk under **`data/<analysis_id>/<role>.<ext>`** where
+`role` is one of `concentration | notes | temperature | pressure` (original
+extension preserved), so any campaign can be re-run. `DATA_DIR` sets the base dir
+(default `./data`, created on startup); the SQLite DB defaults to `data/flux.db`
+(`DATABASE_URL`).
 
 ## Database schema
-SQLite, four tables (columns copied from `project-brief.md` → "Data stored by the
-application"). Raw files sit on disk under `data/` and are referenced by the
-`Analysis`.
+SQLite via SQLModel, **five tables**. Primary keys are URL-safe UUID4 hex strings.
+Columns mirror `project-brief.md` → "Data stored by the application" (with an added
+`status` on `Analysis` and a `ProcessingLogEntry` table for the persisted log).
 
 - **`Analysis`** `(id, name, work_date, chamber_area_m2, chamber_volume_l,
-  time_offset_seconds, created_at)`
+  time_offset_seconds, status, created_at)` — `status` is
+  `draft | needs_review | complete`.
 - **`Spot`** `(id, analysis_id, nr, gps, light_dark, location_desc, start_time,
-  stop_time)`
+  stop_time)` — `start_time`/`stop_time` are `HH:MM:SS` strings.
 - **`Reading`** `(id, spot_id, timestamp, co2_ppm, ch4_ppb, temperature_used,
-  pressure_used)`
+  pressure_used)` — concentrations are nullable (`nan` rows stored as null).
 - **`FluxResult`** `(id, spot_id, gas, slope, r2, flux_umol_m2_s, flux_umol_m2_h,
   flux_mol_m2_h, flux_gC_m2_day, flux_kg_m2_h, flux_kg_ha_h, flux_kg_ha_day,
   flux_kg_ha_year, flux_Mg_ha_year, flux_Mg_ha_year_co2equiv, n_points)`
+- **`ProcessingLogEntry`** `(id, analysis_id, ts, severity, message)` — `severity`
+  is `info | warning | error`.
+
+Relationships: `Analysis` → many `Spot` and `ProcessingLogEntry`; `Spot` → many
+`Reading` and `FluxResult`.
 
 ## How to add an endpoint (the recipe)
 1. **Write the test first** in `backend/tests/` (mirror the `app/` path); assert the
