@@ -14,6 +14,30 @@ ladder. An LLM normalises the messy notes/pressure into strict JSON (human-confi
 before use); the physics/flux math is pure code and never LLM-touched. Every
 transformation is exposed for supervision (per-spot regression plots, a processing log).
 
+### Two apps, one repo
+This is a **two-app monorepo**; each app is self-contained (its own deps, tests,
+config, and run commands) and has its own standing instructions:
+- **`frontend/`** — React 19 + Vite + TypeScript UI (Tailwind, Plotly). Already
+  built; runs on **mock data** this phase. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md).
+- **`backend/`** — Python 3.14 + FastAPI app (parsing, matching, flux math, API).
+  See [`backend/CLAUDE.md`](backend/CLAUDE.md).
+- **`reference/`** — the original R script, cleaned to run on the repo's sample
+  files; the method-of-record used to validate the Python fluxes. **Not** called
+  by the app. *(may not exist yet — added as an early build step.)*
+
+**How they fit together:** the frontend talks to the backend over **HTTP under the
+`/api` prefix** (via the typed client in `frontend/src/api/`); until the real
+endpoints exist the client returns mock data (`TODO: connect to API`). The backend
+is **local and single-user** — no auth, one SQLite file per install, run on the
+researcher's own machine. **Secrets** (e.g. the LLM API key) live in
+`backend/.env`, which is git-ignored and **never committed**; `backend/.env.example`
+documents the keys with empty values.
+
+**The update rule (applies to both apps):** when you add a feature, add or change
+an endpoint, or change the structure/commands, update the relevant `CLAUDE.md`
+(the app's own, plus this root file if the cross-app picture changed) **in the same
+commit**. Docs drift is a bug.
+
 ## Tech stack
 **Frontend**
 - React 19 + **Vite** + **TypeScript**, Tailwind CSS for styling.
@@ -98,7 +122,7 @@ Each app is self-contained: its own deps, tests, config, and run commands.
 _Fill in as each app is scaffolded._
 
 **Backend** (from `backend/`)
-- Install: `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt`
+- Install: `python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"`
 - Dev: `uvicorn app.main:app --reload`
 - Test: `pytest`
 - Lint/format/types: `ruff check . && ruff format --check . && mypy .`
