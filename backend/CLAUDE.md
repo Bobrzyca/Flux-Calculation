@@ -94,6 +94,11 @@ All four must be **green before every commit** (root rule 2). Write or update a
 - Read endpoints recompute per-spot fits from the persisted `Reading` rows via the
   same `fit_spot` pipeline (one code path); `FluxResult` stays the durable record
   the export reads.
+- `GET /api/analyses/{id}/export?format=xlsx|txt|csv` (default `xlsx`, 422 on
+  unknown, 404 on unknown analysis) — streams a download with the identity columns
+  + conditions + **full unit ladder per gas**, built from `FluxResult` by the
+  reusable `app/export/tabular.py:build_table`. `Content-Disposition` uses the
+  analysis name.
 
 **Pipeline overview** (the end-to-end flow the endpoints assemble):
 ```
