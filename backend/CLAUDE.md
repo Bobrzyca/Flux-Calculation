@@ -72,6 +72,11 @@ All four must be **green before every commit** (root rule 2). Write or update a
 - `GET /api/analyses` — summaries, newest first. `GET /api/analyses/{id}` — one
   (404). `DELETE /api/analyses/{id}` — removes the analysis, its children, and its
   stored files (204).
+- `GET /api/analyses/{id}/notes` → `ParsedNotes` (Spot rows with freshly computed
+  `NoteFlag`s; `parse_failed` always False for now — `# TODO: LLM fallback`).
+  `PUT /api/analyses/{id}/notes` (body: `NoteRow[]`) replaces the spot set with the
+  confirmed/edited rows, re-validates, and returns the saved `ParsedNotes` (404 if
+  the analysis is missing).
 
 **Pipeline overview** (the end-to-end flow the endpoints assemble):
 ```
