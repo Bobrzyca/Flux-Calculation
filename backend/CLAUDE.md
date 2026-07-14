@@ -97,6 +97,15 @@ start+30 s→+5 min 30 s, nan drop/count, `low_r2`/`short_window` flags), and
 `reference/` (the R method-of-record) isn't in the repo yet — `# TODO: re-validate
 against R` on the 2026-07-02 Kampinos campaign once it lands.
 
+The `matching/` package is pure: `timeshift.py` (`apply_offset` adds the
+instrument-clock offset to the concentration timestamps) and `match.py`
+(`slice_spot` windows the offset-corrected stream by a note's `HH:MM:SS` on the
+work date; `nearest_temperature`/`nearest_pressure`; `match_spot` returns the
+annotated in-window readings, the per-spot temp/pressure, skip reasons — empty
+window / stop-before-start / unparseable time — the `no_pressure` flag, and
+structured `LogMessage`s). Spots are matched independently, so a shared GPS
+(light/dark pair or redo) stays distinct.
+
 Persistence lives in `app/db/`: `models.py` (SQLModel tables), `session.py` (the
 engine, `get_session` dependency, and `create_db_and_tables`, called from the
 startup lifespan in `main.py`), and `storage.py` (raw-file storage helpers). Raw
