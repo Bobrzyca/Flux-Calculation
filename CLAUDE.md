@@ -21,9 +21,10 @@ config, and run commands) and has its own standing instructions:
   the backend over HTTP. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md).
 - **`backend/`** — Python 3.14 + FastAPI app (parsing, matching, flux math, API).
   See [`backend/CLAUDE.md`](backend/CLAUDE.md).
-- **`reference/`** — the original R script, cleaned to run on the repo's sample
-  files; the method-of-record used to validate the Python fluxes. **Not** called
-  by the app. *(may not exist yet — added as an early build step.)*
+- **`reference/`** — the R method-of-record used to validate the Python fluxes,
+  cleaned to run on the repo's sample files. **Not** called by the app. Currently
+  a **Python-derived scaffold** (`flux_reference.R`) — replace it with the real,
+  independent R script (see `reference/README.md`).
 
 **How they fit together:** the frontend talks to the backend over **HTTP under the
 `/api` prefix** (via the typed `fetch` client in `frontend/src/api/client.ts`,

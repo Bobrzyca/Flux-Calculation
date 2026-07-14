@@ -134,9 +134,10 @@ The `flux/` package is the scientific core (pure, **never LLM-touched**):
 CH₄ ppb→ppm, CO₂-equivalent via GWP), `pipeline.py` (`fit_spot`: window
 start+30 s→+5 min 30 s, nan drop/count, `low_r2`/`short_window` flags), and
 `constants.py` (gas constants, molar masses, GWP, thresholds — the tunable numbers).
-**Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`;
-`reference/` (the R method-of-record) isn't in the repo yet — `# TODO: re-validate
-against R` on the 2026-07-02 Kampinos campaign once it lands.
+**Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`.
+`reference/flux_reference.R` exists but is a **Python-derived scaffold** (so it can't
+independently validate yet) — `# TODO: re-validate` once the real, independent R
+script replaces it and is run on the 2026-07-02 Kampinos campaign.
 
 The `matching/` package is pure: `timeshift.py` (`apply_offset` adds the
 instrument-clock offset to the concentration timestamps) and `match.py`
