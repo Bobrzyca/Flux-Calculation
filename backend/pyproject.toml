@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flux-calculation-backend"
+version = "0.1.0"
+description = "Flux Calculation — FastAPI backend for closed-chamber GHG flux computation"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "MIT" }
+
+# Lower-bound pins: Python 3.14 is new, so we let pip resolve the newest
+# releases that ship 3.14 wheels rather than exact-pinning versions that may
+# not have them yet.
+dependencies = [
+    "fastapi>=0.118",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "python-multipart>=0.0.18",
+    "sqlmodel>=0.0.22",
+    "pandas>=2.2",
+    "numpy>=2.1",
+    "scipy>=1.14",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, pyupgrade, flake8-bugbear
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.mypy]
+python_version = "3.14"
+files = ["app"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Scientific libs ship partial/no stubs; don't fail typing on their internals.
+module = ["pandas.*", "scipy.*", "openpyxl.*", "docx.*"]
+ignore_missing_imports = true

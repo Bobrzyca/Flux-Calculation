@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+
+# Local data: uploaded files + SQLite database
+data/
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
