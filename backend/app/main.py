@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import analyses, match, notes
+from app.api import analyses, match, notes, results
 from app.core.config import settings
 from app.db.session import create_db_and_tables
 
@@ -45,3 +45,4 @@ def health() -> dict[str, str]:
 app.include_router(analyses.router)
 app.include_router(notes.router)
 app.include_router(match.router)
+app.include_router(results.router)

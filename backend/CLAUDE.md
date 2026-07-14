@@ -83,6 +83,17 @@ All four must be **green before every commit** (root rule 2). Write or update a
   empty-window / stop-before-start spots (logged). **Idempotent**: clears the
   previous run's rows first. Returns a `MatchSummary`. The router is thin — all
   math is in `flux/` + `matching/`.
+- `GET /api/analyses/{id}/results` → `ResultsPayload` (per-spot table; flags
+  `low_r2`/`short_window`/`dropped_nan`/`no_pressure`; skipped spots carry a
+  `skip_reason`). `quality_check.available` is **false** with a pending message —
+  n8n is deferred (`# TODO: n8n quality check`).
+- `GET /api/analyses/{id}/spots/{nr}` → `SpotDetail` (per-gas points with
+  `in_window`, fit incl. `n_dropped_nan`, `fit_window`, flux ladder); `null` for a
+  skipped spot, 404 if the spot doesn't exist.
+- `GET /api/analyses/{id}/log` → the `ProcessingLogEntry` rows in order.
+- Read endpoints recompute per-spot fits from the persisted `Reading` rows via the
+  same `fit_spot` pipeline (one code path); `FluxResult` stays the durable record
+  the export reads.
 
 **Pipeline overview** (the end-to-end flow the endpoints assemble):
 ```
