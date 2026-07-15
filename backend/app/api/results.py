@@ -25,6 +25,11 @@ from app.schemas.results import (
     ResultsPayload,
     SpotDetail,
     SpotResult,
+    Timeseries,
+    TSGas,
+    TSLinePoint,
+    TSPoint,
+    TSSpot,
 )
 
 router = APIRouter(prefix="/api", tags=["results"])
@@ -319,6 +324,57 @@ def get_spot_detail(
         ),
         flags=_spot_flags(fits, no_pressure=readings[0].pressure_used is None),
         gases=gases,
+    )
+
+
+@router.get("/analyses/{analysis_id}/timeseries", response_model=Timeseries)
+def get_timeseries(
+    analysis_id: str, session: Session = Depends(get_session)
+) -> Timeseries:
+    """All computed spots' concentration points on the real (absolute) time axis,
+    with each spot's fitted flux-line endpoints — for the campaign overview graph.
+    """
+    analysis = _get_analysis(session, analysis_id)
+    gas_spots: dict[str, list[TSSpot]] = {"CO2": [], "CH4": []}
+    for spot in sorted(analysis.spots, key=lambda s: s.nr):
+        readings = _sorted_readings(spot)
+        if not readings:
+            continue
+        fits = _fit_results(analysis, readings)
+        t0 = readings[0].timestamp
+        for gas in GAS_COLUMN:
+            attr = _GAS_META[gas][0]
+            gr = fits[gas] if fits else None
+            lo = gr.fit_start_s if gr else None
+            hi = gr.fit_stop_s if gr else None
+            points = [
+                TSPoint(
+                    t_unix=r.timestamp,
+                    value=value,
+                    in_window=lo is not None
+                    and hi is not None
+                    and lo <= (r.timestamp - t0) < hi,
+                )
+                for r in readings
+                if (value := getattr(r, attr)) is not None
+            ]
+            line: list[TSLinePoint] = []
+            if gr and gr.fit is not None and lo is not None and hi is not None:
+                line = [
+                    TSLinePoint(t_unix=t0 + lo, y=gr.fit.intercept + gr.fit.slope * lo),
+                    TSLinePoint(t_unix=t0 + hi, y=gr.fit.intercept + gr.fit.slope * hi),
+                ]
+            gas_spots[gas].append(
+                TSSpot(
+                    nr=spot.nr,
+                    light_dark=spot.light_dark,
+                    points=points,
+                    line=line,
+                )
+            )
+    return Timeseries(
+        co2=TSGas(unit="ppm", spots=gas_spots["CO2"]),
+        ch4=TSGas(unit="ppb", spots=gas_spots["CH4"]),
     )
 
 

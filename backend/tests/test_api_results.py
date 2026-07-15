@@ -88,3 +88,19 @@ def test_read_endpoints_404(client: TestClient) -> None:
     assert client.get("/api/analyses/nope/log").status_code == 404
     analysis_id = _create_and_match(client)
     assert client.get(f"/api/analyses/{analysis_id}/spots/999").status_code == 404
+
+
+def test_timeseries_endpoint(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.get(f"/api/analyses/{analysis_id}/timeseries")
+    assert resp.status_code == 200
+    ts = resp.json()
+    assert ts["co2"]["unit"] == "ppm" and ts["ch4"]["unit"] == "ppb"
+    # Computed spots (1 & 2) carry points on the absolute time axis + a fit line.
+    co2_spots = {s["nr"]: s for s in ts["co2"]["spots"]}
+    assert 1 in co2_spots
+    spot = co2_spots[1]
+    assert len(spot["points"]) > 100
+    assert spot["points"][0]["t_unix"] > 1_700_000_000  # real unix seconds
+    assert any(p["in_window"] for p in spot["points"])
+    assert len(spot["line"]) == 2  # fit-line endpoints

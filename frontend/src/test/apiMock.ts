@@ -15,6 +15,7 @@ import {
   buildNotes,
   buildResults,
   buildSpotDetail,
+  buildTimeseries,
 } from '@/test/mockData'
 
 let analyses: Analysis[] = []
@@ -181,6 +182,9 @@ async function handle(
 
   const spotMatch = path.match(/^\/analyses\/([^/]+)\/spots\/(\d+)$/)
   if (spotMatch) return json(buildSpotDetail(Number(spotMatch[2])))
+
+  const tsMatch = path.match(/^\/analyses\/([^/]+)\/timeseries$/)
+  if (tsMatch) return json(buildTimeseries())
 
   const logMatch = path.match(/^\/analyses\/([^/]+)\/log$/)
   if (logMatch) return json(buildLog())

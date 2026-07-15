@@ -19,9 +19,9 @@ import {
 } from '@/components'
 
 // Code-split Plotly: only loads when results (with the graph) render.
-const RegressionPlot = lazy(() =>
-  import('@/components/RegressionPlot').then((m) => ({
-    default: m.RegressionPlot,
+const TimeSeriesPlot = lazy(() =>
+  import('@/components/TimeSeriesPlot').then((m) => ({
+    default: m.TimeSeriesPlot,
   })),
 )
 import {
@@ -442,40 +442,65 @@ function SpotGraph({
   analysisId: string
   spotNrs: number[]
 }) {
+  const [mode, setMode] = useState<'single' | 'all'>('single')
   const [nr, setNr] = useState(spotNrs[0])
   const [gas, setGas] = useState<Gas>('CO2')
   const { data, loading } = useAsync(
-    () => api.getSpotDetail(analysisId, nr),
-    [analysisId, nr],
+    () => api.getTimeseries(analysisId),
+    [analysisId],
   )
   // If the selected spot vanished from the list (re-run), fall back to the first.
   const selected = spotNrs.includes(nr) ? nr : spotNrs[0]
+  const gasData = data ? (gas === 'CO2' ? data.co2 : data.ch4) : null
 
   return (
     <Card className="p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="mb-1 flex flex-wrap items-center gap-3">
         <h2 className="text-sm font-semibold text-text">
-          Regression &amp; time series
+          Concentration &amp; flux fit
         </h2>
-        <label className="ml-auto flex items-center gap-2 text-sm text-muted">
-          Spot
-          <select
-            aria-label="Graph spot"
-            value={selected}
-            onChange={(e) => setNr(Number(e.target.value))}
-            className="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text focus:border-primary"
-          >
-            {spotNrs.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div
+          role="tablist"
+          aria-label="Which spots"
+          className="inline-flex rounded-lg border border-border p-1"
+        >
+          {(['single', 'all'] as const).map((m) => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => setMode(m)}
+              className={
+                mode === m
+                  ? 'rounded-md bg-primary px-3 py-1 text-sm font-medium text-white'
+                  : 'rounded-md px-3 py-1 text-sm font-medium text-muted hover:text-text'
+              }
+            >
+              {m === 'single' ? 'This spot' : 'All spots'}
+            </button>
+          ))}
+        </div>
+        {mode === 'single' && (
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Spot
+            <select
+              aria-label="Graph spot"
+              value={selected}
+              onChange={(e) => setNr(Number(e.target.value))}
+              className="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text focus:border-primary"
+            >
+              {spotNrs.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div
           role="tablist"
           aria-label="Gas"
-          className="inline-flex rounded-lg border border-border p-1"
+          className="ml-auto inline-flex rounded-lg border border-border p-1"
         >
           {(['CO2', 'CH4'] as Gas[]).map((g) => (
             <button
@@ -494,18 +519,20 @@ function SpotGraph({
           ))}
         </div>
       </div>
-      {data && (
-        <p className="mb-2 text-xs text-muted">
-          Fit window {data.fit_window.start} → {data.fit_window.stop}
-          {data.flags.includes('time_shifted') &&
-            ' — shifted to the most-linear part of the measurement'}
-        </p>
-      )}
-      {loading || !data ? (
-        <Skeleton className="h-[340px] w-full" />
+      <p className="mb-2 text-xs text-muted">
+        Real clock time on the x-axis. Highlighted points + line = the fitted
+        window; drag to zoom and check individual points.
+      </p>
+      {loading || !gasData ? (
+        <Skeleton className="h-[380px] w-full" />
       ) : (
-        <Suspense fallback={<Skeleton className="h-[340px] w-full" />}>
-          <RegressionPlot gas={gas} detail={data.gases[gas]} />
+        <Suspense fallback={<Skeleton className="h-[380px] w-full" />}>
+          <TimeSeriesPlot
+            gas={gas}
+            data={gasData}
+            mode={mode}
+            selectedNr={selected}
+          />
         </Suspense>
       )}
     </Card>

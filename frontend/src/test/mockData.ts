@@ -668,3 +668,25 @@ export const SEED_ANALYSES: Analysis[] = [
 ]
 
 export type { AnalysisSummary }
+
+/** Minimal whole-campaign time series for the overview graph (tests only). */
+export function buildTimeseries(): import('@/api/types').Timeseries {
+  const base = 1782980000
+  const mk = (nr: number, offset: number) => ({
+    nr,
+    light_dark: 'light' as const,
+    points: Array.from({ length: 20 }, (_, i) => ({
+      t_unix: base + offset + i,
+      value: 400 + i * 0.1,
+      in_window: i >= 5,
+    })),
+    line: [
+      { t_unix: base + offset + 5, y: 400.5 },
+      { t_unix: base + offset + 19, y: 401.9 },
+    ],
+  })
+  return {
+    co2: { unit: 'ppm', spots: [mk(1, 0), mk(2, 100)] },
+    ch4: { unit: 'ppb', spots: [mk(1, 0), mk(2, 100)] },
+  }
+}

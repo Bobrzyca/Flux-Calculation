@@ -106,3 +106,32 @@ class LogEntry(BaseModel):
     ts: datetime
     severity: str
     message: str
+
+
+# --- Whole-campaign time series (for the overview graph) -------------------
+class TSPoint(BaseModel):
+    t_unix: float  # absolute time (naive local wall-clock as unix seconds)
+    value: float
+    in_window: bool
+
+
+class TSLinePoint(BaseModel):
+    t_unix: float
+    y: float
+
+
+class TSSpot(BaseModel):
+    nr: int
+    light_dark: str
+    points: list[TSPoint]
+    line: list[TSLinePoint]  # fit-line endpoints (empty if not computed)
+
+
+class TSGas(BaseModel):
+    unit: str
+    spots: list[TSSpot]
+
+
+class Timeseries(BaseModel):
+    co2: TSGas
+    ch4: TSGas

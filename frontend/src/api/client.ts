@@ -20,6 +20,7 @@ import type {
   ParsedNotes,
   ResultsPayload,
   SpotDetail,
+  Timeseries,
 } from '@/api/types'
 
 const BASE_URL =
@@ -160,6 +161,11 @@ export const api = {
   /** GET /analyses/{id}/log */
   getLog(id: string): Promise<LogEntry[]> {
     return getJson<LogEntry[]>(`/analyses/${id}/log`)
+  },
+
+  /** GET /analyses/{id}/timeseries — all spots' points on the absolute time axis. */
+  getTimeseries(id: string): Promise<Timeseries> {
+    return getJson<Timeseries>(`/analyses/${id}/timeseries`)
   },
 
   /** GET /analyses/{id}/export?format=xlsx|txt|csv — the file blob. */

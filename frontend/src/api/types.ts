@@ -148,6 +148,30 @@ export interface SpotDetail {
   gases: Record<Gas, GasDetail>
 }
 
+/** Whole-campaign time series for the overview graph (absolute time axis). */
+export interface TSPoint {
+  t_unix: number
+  value: number
+  in_window: boolean
+}
+
+export interface TSSpot {
+  nr: number
+  light_dark: LightDark
+  points: TSPoint[]
+  line: { t_unix: number; y: number }[]
+}
+
+export interface TSGas {
+  unit: string
+  spots: TSSpot[]
+}
+
+export interface Timeseries {
+  co2: TSGas
+  ch4: TSGas
+}
+
 export type LogSeverity = 'info' | 'warning' | 'error'
 
 export interface LogEntry {
