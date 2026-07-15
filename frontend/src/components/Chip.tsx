@@ -60,7 +60,8 @@ export function LightDarkTag({ value }: { value: LightDark }) {
 
 const FLAG_META: Record<SpotFlag, { tone: Tone; label: string }> = {
   low_r2: { tone: 'warning', label: 'Low R²' },
-  short_window: { tone: 'warning', label: 'Short window' },
+  short_window: { tone: 'warning', label: 'Short window (< 4 min)' },
+  time_shifted: { tone: 'neutral', label: 'Time-shifted' },
   no_pressure: { tone: 'warning', label: 'No pressure' },
   dropped_nan: { tone: 'neutral', label: 'nan dropped' },
   anomalous: { tone: 'danger', label: 'Anomalous' },

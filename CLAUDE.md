@@ -6,8 +6,10 @@ where the brief is silent I use common defaults, marked **(assumption)**.
 ## Project
 Flux Calculation is a **local, single-user desktop-style web tool** for closed-chamber
 greenhouse-gas researchers (the author and lab friends, LI-7810 instrument family). It
-ingests four raw field files — a 1 Hz LI-7810 CO₂/CH₄ concentration log, hand-typed
-start/stop time notes, a temperature xlsx, and an IMGW pressure file — auto-matches them
+ingests up to four raw field files — a 1 Hz LI-7810 CO₂/CH₄ concentration log, hand-typed
+start/stop time notes, a temperature xlsx, and (optionally) an IMGW pressure file; when the
+pressure file is omitted the flux math falls back to a default sea-level pressure and the
+affected spots are flagged `no_pressure` — auto-matches them
 by timestamp (with a correctable instrument-clock offset), fits a linear regression of
 concentration vs. time per gas per spot, and computes CO₂/CH₄ flux across a full unit
 ladder. An LLM normalises the messy notes/pressure into strict JSON (human-confirmed
@@ -136,6 +138,50 @@ _Fill in as each app is scaffolded._
 - Talks to the **real backend** over HTTP (`src/api/client.ts`); base URL is
   `VITE_API_BASE_URL` (default `http://localhost:8000/api`). Run `uvicorn` in
   `backend/` alongside `npm run dev`. Tests use a fetch stub (no live backend).
+
+## Docker / deployment
+Production runs as three containers on a shared bridge network (`flux-net`), defined
+by the root **`docker-compose.yml`**. **Traefik** is the edge; the app containers are
+reachable **only through it** (no host port mappings of their own):
+- **`traefik`** — `traefik:v3.3`, the reverse proxy / TLS terminator and the **only**
+  service published to the host (**80 + 443**). Two entrypoints: `web` (:80) and
+  `websecure` (:443), with a global **HTTP→HTTPS redirect** (the ACME challenge is
+  still answered on :80). Certificates come from **Let's Encrypt via the ACME
+  HTTP-01 challenge** (resolver `letsencrypt`, email `${ACME_EMAIL}`) and persist in
+  the **`letsencrypt`** volume at `/letsencrypt/acme.json`. Provider is **docker**
+  with `exposedbydefault=false`, so only containers labelled `traefik.enable=true`
+  are routed; it watches the Docker socket read-only (`/var/run/docker.sock:ro`).
+- **`backend`** — `backend/Dockerfile`, a multi-stage build: a `python:3.14-slim`
+  build stage installs runtime deps into a venv (`pip install .`, no dev extras);
+  the slim runtime stage copies the venv + `app/`, runs as a non-root user, and
+  serves `uvicorn app.main:app --host 0.0.0.0 --port 8000`. Internal only (`expose`,
+  not published). Config comes from the project **`.env`** via `env_file`
+  (pydantic-settings). Uploads + SQLite persist in the **`backend-data`** volume at
+  `/app/data`. Traefik route (router `flux-backend`, **priority 100**):
+  **`Host(kulis.aibr.cz) && PathPrefix(/api)`** → container port 8000. The `/api`
+  prefix is **not** stripped (the backend mounts every route under `/api`).
+- **`frontend`** — `frontend/Dockerfile`, multi-stage: a `node:24-slim` stage runs
+  `npm ci && npm run build`; an `nginx:1.27-alpine` stage serves the static bundle.
+  `frontend/nginx.conf` does SPA fallback and still reverse-proxies `/api` (a
+  harmless fallback for non-Traefik runs). Traefik route (router `flux-frontend`):
+  **`Host(kulis.aibr.cz)`** → container port 80. This is the catch-all; the
+  higher-priority backend router claims `/api` first, so everything else (SPA +
+  assets) lands here. Same-origin, so no prod CORS.
+- **Routing rule of thumb:** `kulis.aibr.cz/api/...` → backend; everything else →
+  frontend. Both app routers use `entrypoints=websecure` + `tls.certresolver=letsencrypt`.
+- `VITE_API_BASE_URL` (default `/api`, relative) is baked into the bundle at build
+  time via a compose build `arg` — not a runtime env var. The browser hits
+  `kulis.aibr.cz/api`, which Traefik routes to the backend.
+- **All three** services use `restart: always`; Docker is `systemctl enable`d so the
+  stack comes back on reboot. `.dockerignore` in each app keeps `node_modules`,
+  `.env`, local `data/`, and caches out of the images.
+
+Env: copy **`.env.example`** → `.env` (git-ignored) at the repo root; it lists every
+variable the stack needs, including **`DOMAIN`** (`kulis.aibr.cz`) and **`ACME_EMAIL`**
+used by Traefik. Build & run: `docker compose up -d --build` (nothing is started
+automatically). Validate config without starting: `docker compose config`. DNS for
+`kulis.aibr.cz` must point at this host before the first request, or ACME issuance
+(HTTP-01) will fail.
 
 ## Definition of done
 A change is done when: the relevant tests pass, lint/format/type-check are clean, the

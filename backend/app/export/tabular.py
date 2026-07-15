@@ -33,8 +33,10 @@ def _headers() -> list[str]:
         "stop",
         "GPS",
         "light_dark",
-        "location",
+        "comment",
         "temperature_used_c",
+        "temperature_min_c",
+        "temperature_max_c",
         "pressure_used_hpa",
         "time_offset_applied_s",
     ]
@@ -62,7 +64,10 @@ def build_table(analysis: Analysis) -> tuple[list[str], list[list[Any]]]:
     for spot in sorted(analysis.spots, key=lambda s: s.nr):
         readings: list[Reading] = list(spot.readings)
         flux_by_gas = {fr.gas: fr for fr in spot.flux_results}
-        temp = readings[0].temperature_used if readings else None
+        temps = [r.temperature_used for r in readings if r.temperature_used is not None]
+        temp = sum(temps) / len(temps) if temps else None
+        temp_min = min(temps) if temps else None
+        temp_max = max(temps) if temps else None
         pressure = readings[0].pressure_used if readings else None
 
         row: list[Any] = [
@@ -74,6 +79,8 @@ def build_table(analysis: Analysis) -> tuple[list[str], list[list[Any]]]:
             spot.light_dark,
             spot.location_desc,
             temp,
+            temp_min,
+            temp_max,
             pressure,
             analysis.time_offset_seconds,
         ]

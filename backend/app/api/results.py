@@ -30,7 +30,14 @@ from app.schemas.results import (
 router = APIRouter(prefix="/api", tags=["results"])
 
 # Canonical order for the per-spot flag list (matches the frontend SpotFlag union).
-_FLAG_ORDER = ["low_r2", "short_window", "dropped_nan", "no_pressure", "anomalous"]
+_FLAG_ORDER = [
+    "low_r2",
+    "short_window",
+    "time_shifted",
+    "dropped_nan",
+    "no_pressure",
+    "anomalous",
+]
 
 # gas -> (reading attribute, display unit)
 _GAS_META = {"CO2": ("co2_ppm", "ppm"), "CH4": ("ch4_ppb", "ppb")}
@@ -57,6 +64,10 @@ def _readings_df(readings: list[Reading]) -> pd.DataFrame:
             "ch4_ppb": [
                 float("nan") if r.ch4_ppb is None else r.ch4_ppb for r in readings
             ],
+            "temperature_used": [
+                float("nan") if r.temperature_used is None else r.temperature_used
+                for r in readings
+            ],
         }
     )
 
@@ -69,12 +80,18 @@ def _skip_reason(spot: Spot) -> str:
     return "empty window"
 
 
-def _spot_flags(results: dict[str, GasResult]) -> list[str]:
+def _spot_flags(
+    results: dict[str, GasResult], *, no_pressure: bool = False
+) -> list[str]:
     flags: set[str] = set()
     for gas_result in results.values():
         flags.update(gas_result.flags)  # low_r2, short_window
         if gas_result.n_dropped_nan > 0:
             flags.add("dropped_nan")
+        if gas_result.fit_offset_s != C.FIT_SKIP_SECONDS:
+            flags.add("time_shifted")  # best-window shifted the fit window
+    if no_pressure:
+        flags.add("no_pressure")
     return [flag for flag in _FLAG_ORDER if flag in flags]
 
 
@@ -90,15 +107,21 @@ def _fit_results(
     """Recompute both gases from persisted readings; None if unfittable."""
     if not readings:
         return None
-    temp = readings[0].temperature_used
+    temps = [r.temperature_used for r in readings if r.temperature_used is not None]
+    if not temps:
+        return None  # no temperature at all -> can't compute
+    # Pressure is optional: recompute with the default when none was stored (the
+    # same fallback the match endpoint used); the spot is flagged no_pressure.
     pressure = readings[0].pressure_used
-    if temp is None or pressure is None:
-        return None
+    if pressure is None:
+        pressure = C.DEFAULT_PRESSURE_HPA
+    # fit_spot uses the per-reading temperature column for its window mean/range;
+    # the scalar here is only a fallback if that column is entirely missing.
     return fit_spot(
         _readings_df(readings),
         analysis.chamber_area_m2,
         analysis.chamber_volume_l,
-        temp,
+        sum(temps) / len(temps),
         pressure,
     )
 
@@ -145,10 +168,13 @@ def get_results(
             continue
 
         temp = readings[0].temperature_used
-        pressure = readings[0].pressure_used
+        no_pressure = readings[0].pressure_used is None
+        # What pressure the flux actually used: the stored value, or the default
+        # when none was supplied (pressure is optional).
+        pressure = C.DEFAULT_PRESSURE_HPA if no_pressure else readings[0].pressure_used
         fits = _fit_results(analysis, readings)
         if fits is None:
-            # Readings exist but temp/pressure missing -> flux not computed.
+            # Readings exist but temperature missing -> flux not computed.
             spots.append(
                 SpotResult(
                     **base,
@@ -160,7 +186,7 @@ def get_results(
                     pressure_used_hpa=pressure,
                     n_points_co2=0,
                     n_points_ch4=0,
-                    flags=["no_pressure"],
+                    flags=["no_pressure"] if no_pressure else [],
                     skipped=False,
                     skip_reason=None,
                 )
@@ -175,11 +201,14 @@ def get_results(
                 ch4_flux_umol_m2_s=ch4.ladder.umol_m2_s if ch4.ladder else None,
                 r2_co2=co2.fit.r2 if co2.fit else None,
                 r2_ch4=ch4.fit.r2 if ch4.fit else None,
-                temperature_used_c=temp,
+                temperature_used_c=co2.temp_mean_c,
+                temperature_min_c=co2.temp_min_c,
+                temperature_max_c=co2.temp_max_c,
                 pressure_used_hpa=pressure,
+                fit_offset_s=co2.fit_offset_s,
                 n_points_co2=co2.n_points,
                 n_points_ch4=ch4.n_points,
-                flags=_spot_flags(fits),
+                flags=_spot_flags(fits, no_pressure=no_pressure),
                 skipped=False,
                 skip_reason=None,
             )
@@ -213,9 +242,7 @@ def _gas_detail(
             GasPoint(
                 t_s=rel,
                 value=value,
-                in_window=C.FIT_SKIP_SECONDS
-                <= rel
-                < C.FIT_SKIP_SECONDS + C.FIT_WINDOW_SECONDS,
+                in_window=result.fit_start_s <= rel < result.fit_stop_s,
             )
         )
 
@@ -280,17 +307,17 @@ def get_spot_detail(
 
     t0 = readings[0].timestamp
     gases = {gas: _gas_detail(gas, readings, fits[gas], t0) for gas in GAS_COLUMN}
+    # Both gases share one chosen window per spot; use it for the header times.
+    offset = int(fits["CO2"].fit_offset_s)
     return SpotDetail(
         nr=spot.nr,
         gps=spot.gps,
         light_dark=spot.light_dark,
         fit_window=FitWindow(
-            start=_shift_hhmmss(spot.start_time, C.FIT_SKIP_SECONDS),
-            stop=_shift_hhmmss(
-                spot.start_time, C.FIT_SKIP_SECONDS + C.FIT_WINDOW_SECONDS
-            ),
+            start=_shift_hhmmss(spot.start_time, offset),
+            stop=_shift_hhmmss(spot.start_time, offset + C.FIT_WINDOW_SECONDS),
         ),
-        flags=_spot_flags(fits),
+        flags=_spot_flags(fits, no_pressure=readings[0].pressure_used is None),
         gases=gases,
     )
 

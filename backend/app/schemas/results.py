@@ -22,8 +22,12 @@ class SpotResult(BaseModel):
     r2_co2: float | None
     r2_ch4: float | None
     temperature_used_c: float | None
+    temperature_min_c: float | None = None
+    temperature_max_c: float | None = None
     pressure_used_hpa: float | None
     time_offset_applied_s: float
+    # Seconds the fit window was shifted after the recorded start (best-window).
+    fit_offset_s: float = 0.0
     n_points_co2: int
     n_points_ch4: int
     flags: list[str]

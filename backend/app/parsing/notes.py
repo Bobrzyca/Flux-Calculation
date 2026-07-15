@@ -24,12 +24,31 @@ LOCATION_MISSING = "location_missing"
 
 # Canonical column -> accepted header spellings (lower-cased, stripped).
 _HEADER_ALIASES: dict[str, set[str]] = {
-    "nr": {"nr", "no", "no.", "lp", "lp.", "spot", "numer"},
+    "nr": {"nr", "no", "no.", "lp", "lp.", "spot", "numer", "punkt", "pkt"},
     "start": {"start", "start_time", "poczatek", "początek", "od"},
     "stop": {"stop", "stop_time", "end", "koniec", "do"},
     "gps": {"gps", "coords", "coordinates", "wspolrzedne", "współrzędne"},
-    "light_dark": {"light/dark", "light_dark", "light-dark", "type", "l/d"},
-    "location": {"location", "opis", "miejsce", "lokalizacja", "description"},
+    "light_dark": {
+        "light/dark",
+        "light_dark",
+        "light-dark",
+        "type",
+        "l/d",
+        "chamber",
+        "komora",
+    },
+    "location": {
+        "location",
+        "opis",
+        "miejsce",
+        "lokalizacja",
+        "gdzie",
+        "description",
+        "comment",
+        "comments",
+        "komentarz",
+        "uwagi",
+    },
 }
 
 
@@ -87,8 +106,8 @@ def _parse_nr(raw: str) -> int:
 def _read_table(path: str | Path) -> list[dict[str, str]]:
     """Read the notes file into a list of string-keyed/valued row dicts."""
     suffix = Path(path).suffix.lower()
-    if suffix == ".csv":
-        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+    if suffix in {".csv", ".txt", ".tsv"}:
+        frame = _read_csv_autodetect(path)
     elif suffix in {".xlsx", ".xls"}:
         frame = pd.read_excel(path, dtype=str, engine="openpyxl").fillna("")
     elif suffix == ".docx":
@@ -99,6 +118,20 @@ def _read_table(path: str | Path) -> list[dict[str, str]]:
         {str(k): "" if v is None else str(v) for k, v in record.items()}
         for record in frame.to_dict("records")
     ]
+
+
+def _read_csv_autodetect(path: str | Path) -> pd.DataFrame:
+    """Read a delimited notes file, auto-detecting tab / semicolon / comma."""
+    for sep in ("\t", ";", ","):
+        try:
+            frame = pd.read_csv(path, dtype=str, keep_default_na=False, sep=sep)
+        except ValueError:  # pandas ParserError subclasses ValueError
+            continue
+        if frame.shape[1] > 1:
+            return frame
+    return pd.read_csv(
+        path, dtype=str, keep_default_na=False, sep=None, engine="python"
+    )
 
 
 def _read_docx_table(path: str | Path) -> list[dict[str, str]]:
@@ -118,10 +151,15 @@ def _read_docx_table(path: str | Path) -> list[dict[str, str]]:
 
 
 def _resolve_columns(headers: list[str]) -> dict[str, str]:
-    """Map each canonical field to the actual header present in the file."""
+    """Map each canonical field to the actual header present in the file.
+
+    Header cells may contain internal whitespace/newlines (a Word table can wrap
+    ``Light/dark`` as ``"Light\\n/dark"``), so all whitespace is stripped before
+    matching — otherwise the light/dark column silently fails to resolve.
+    """
     resolved: dict[str, str] = {}
     for header in headers:
-        key = header.strip().lower()
+        key = re.sub(r"\s+", "", header).lower()
         for canonical, aliases in _HEADER_ALIASES.items():
             if key in aliases:
                 resolved[canonical] = header
@@ -151,6 +189,15 @@ def parse_notes(path: str | Path) -> list[NoteRow]:
                 location=cell(record, "location"),
             )
         )
+
+    # ``nr`` is the app's unique per-spot key. If the file had no recognisable
+    # number column (all 0) or the numbers collide (e.g. a "4" and a "4.5" dark
+    # pair both truncate to 4), fall back to a 1-based row index so every spot
+    # stays distinct. light/dark is preserved separately.
+    nrs = [r.nr for r in rows]
+    if any(n == 0 for n in nrs) or len(set(nrs)) != len(nrs):
+        for index, row in enumerate(rows, start=1):
+            row.nr = index
     return rows
 
 
@@ -163,7 +210,8 @@ def validate_notes(rows: list[NoteRow]) -> list[NoteRow]:
         elif row.stop_time <= row.start_time:
             # "HH:MM:SS" strings compare chronologically within a day.
             flags.append(STOP_BEFORE_START)
-        if not row.gps.strip():
+        # Blank or a bare "?" (the field shorthand for "no fix") counts as missing.
+        if not row.gps.strip() or row.gps.strip() == "?":
             flags.append(GPS_MISSING)
         if not row.location.strip():
             flags.append(LOCATION_MISSING)

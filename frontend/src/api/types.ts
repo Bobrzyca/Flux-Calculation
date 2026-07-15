@@ -50,7 +50,12 @@ export type Gas = 'CO2' | 'CH4'
 
 /** Per-spot warning flags shown on results + detail. */
 export type SpotFlag =
-  'low_r2' | 'short_window' | 'no_pressure' | 'dropped_nan' | 'anomalous'
+  | 'low_r2'
+  | 'short_window'
+  | 'time_shifted'
+  | 'no_pressure'
+  | 'dropped_nan'
+  | 'anomalous'
 
 export interface SpotResult {
   nr: number
@@ -65,8 +70,12 @@ export interface SpotResult {
   r2_co2: number | null
   r2_ch4: number | null
   temperature_used_c: number | null
+  temperature_min_c: number | null
+  temperature_max_c: number | null
   pressure_used_hpa: number | null
   time_offset_applied_s: number
+  /** Seconds the fit window was shifted after the recorded start. */
+  fit_offset_s: number
   n_points_co2: number
   n_points_ch4: number
   flags: SpotFlag[]

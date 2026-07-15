@@ -1,0 +1,22 @@
+# Keep dependencies, build output, secrets, and dev cruft out of the build
+# context / image. node_modules is reinstalled fresh from the lockfile.
+
+node_modules
+dist
+dist-ssr
+
+# Secrets — never bake into an image (VITE_* is passed as a build ARG instead)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# VCS / editor
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store

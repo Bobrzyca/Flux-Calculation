@@ -67,6 +67,22 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T
 }
 
+/** Build the multipart body for create/update. Only non-null files are sent. */
+function analysisForm(input: CreateAnalysisInput): FormData {
+  const form = new FormData()
+  form.append('name', input.name)
+  form.append('work_date', input.work_date)
+  form.append('chamber_area_m2', String(input.chamber_area_m2))
+  form.append('chamber_volume_l', String(input.chamber_volume_l))
+  form.append('time_offset_seconds', String(input.time_offset_seconds))
+  const roles = ['concentration', 'notes', 'temperature', 'pressure'] as const
+  for (const role of roles) {
+    const file = input.files[role]
+    if (file) form.append(role, file)
+  }
+  return form
+}
+
 export const api = {
   /** GET /analyses */
   listAnalyses(): Promise<AnalysisSummary[]> {
@@ -83,20 +99,28 @@ export const api = {
     await request(`/analyses/${id}`, { method: 'DELETE' })
   },
 
-  /** POST /analyses (multipart: four files + fields). */
+  /** POST /analyses (multipart: files + fields; pressure optional). */
   async createAnalysis(input: CreateAnalysisInput): Promise<Analysis> {
-    const form = new FormData()
-    form.append('name', input.name)
-    form.append('work_date', input.work_date)
-    form.append('chamber_area_m2', String(input.chamber_area_m2))
-    form.append('chamber_volume_l', String(input.chamber_volume_l))
-    form.append('time_offset_seconds', String(input.time_offset_seconds))
-    const roles = ['concentration', 'notes', 'temperature', 'pressure'] as const
-    for (const role of roles) {
-      const file = input.files[role]
-      if (file) form.append(role, file)
-    }
-    const res = await request('/analyses', { method: 'POST', body: form })
+    const res = await request('/analyses', {
+      method: 'POST',
+      body: analysisForm(input),
+    })
+    return (await res.json()) as Analysis
+  },
+
+  /**
+   * PUT /analyses/{id} — edit an existing analysis and replace any files.
+   * Only files present in `input.files` are replaced; the rest are kept. The
+   * backend resets the analysis to `needs_review` (re-confirm + re-match).
+   */
+  async updateAnalysis(
+    id: string,
+    input: CreateAnalysisInput,
+  ): Promise<Analysis> {
+    const res = await request(`/analyses/${id}`, {
+      method: 'PUT',
+      body: analysisForm(input),
+    })
     return (await res.json()) as Analysis
   },
 

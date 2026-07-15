@@ -5,7 +5,10 @@ root [`../CLAUDE.md`](../CLAUDE.md) (cross-app picture and engineering rules) an
 [`../project-brief.md`](../project-brief.md) (the product spec — the source of truth
 for behaviour, data, and edge cases).
 
-The backend ingests four raw closed-chamber greenhouse-gas files, matches them by
+The backend ingests raw closed-chamber greenhouse-gas files — concentration, time
+notes, and temperature are required; the IMGW **pressure file is optional** (when
+absent the flux math falls back to a default sea-level pressure, and every affected
+spot is flagged `no_pressure`). It matches them by
 timestamp, fits a linear regression per gas per spot, and computes CO₂/CH₄ flux
 across a full unit ladder. **The flux math is pure code and never LLM-touched;** the
 LLM only normalises messy input formats, and its output is always human-confirmed.
@@ -66,9 +69,17 @@ All four must be **green before every commit** (root rule 2). Write or update a
 - `GET /api/health` — liveness.
 - `POST /api/analyses` — multipart (`name, work_date, chamber_area_m2,
   chamber_volume_l, time_offset_seconds` + files `concentration, notes,
-  temperature, pressure`). 422 `missing_file`/`bad_li7810`, 409 `duplicate_name`;
-  on success stores the files, creates the `Analysis` (status `needs_review`), and
-  parses notes into unconfirmed `Spot` rows.
+  temperature` required, `pressure` **optional**). 422 `missing_file` (only for a
+  missing *required* file)/`bad_li7810`, 409 `duplicate_name`; on success stores the
+  uploaded files, creates the `Analysis` (status `needs_review`), and parses notes
+  into unconfirmed `Spot` rows.
+- `PUT /api/analyses/{id}` — edit an existing analysis (the "change files / re-run"
+  flow). Same multipart shape as create, but **all files optional**: only uploaded
+  files are replaced (old file for that role removed first), the rest kept; a
+  replaced concentration is re-validated as LI-7810; rename collisions 409. Replacing
+  inputs resets status to `needs_review` and clears prior `Reading`/`FluxResult`/log
+  rows (re-confirm + re-match); if the notes file was replaced the `Spot` set is
+  rebuilt from it. 404 if unknown.
 - `GET /api/analyses` — summaries, newest first. `GET /api/analyses/{id}` — one
   (404). `DELETE /api/analyses/{id}` — removes the analysis, its children, and its
   stored files (204).
@@ -80,9 +91,17 @@ All four must be **green before every commit** (root rule 2). Write or update a
 - `POST /api/analyses/{id}/match` — the pipeline core: parse stored files → apply
   offset → per-spot slice + attach temp/pressure → fit both gases → persist
   `Reading` + `FluxResult` + `ProcessingLogEntry` → status `complete`. Skips
-  empty-window / stop-before-start spots (logged). **Idempotent**: clears the
-  previous run's rows first. Returns a `MatchSummary`. The router is thin — all
-  math is in `flux/` + `matching/`.
+  empty-window / stop-before-start spots (logged). **Pressure is optional**: with no
+  pressure file (or no reading near a spot) the flux uses
+  `constants.DEFAULT_PRESSURE_HPA` (1013.25 hPa = 1 atm) and the spot is
+  flagged/logged `no_pressure`; temperature is still required to compute a spot. An
+  unreadable stored file returns a clean **422** (`bad_concentration`/
+  `bad_temperature`/`bad_pressure`) on the right field rather than a 500.
+  **Idempotent**: clears the previous run's rows first. Returns a `MatchSummary`. The
+  router is thin — all math is in `flux/` + `matching/`. **The matching date comes
+  from the concentration file's own `DATE`, not the form's `work_date`** (a wrong
+  hand-typed date would otherwise put every window on the wrong day → all empty);
+  the analysis's `work_date` is corrected to the data's date.
 - `GET /api/analyses/{id}/results` → `ResultsPayload` (per-spot table; flags
   `low_r2`/`short_window`/`dropped_nan`/`no_pressure`; skipped spots carry a
   `skip_reason`). `quality_check.available` is **false** with a pending message —
@@ -128,12 +147,40 @@ demo; `sample_data/generate_samples.py` regenerates them deterministically. The
 notes/pressure parsers are deterministic and cover well-formed files only; tolerant
 parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
 
+**Real-export robustness (all times treated as naive local wall-clock):**
+- `li7810.py` locates the `SECONDS/CO2/CH4` header anywhere in the metadata
+  preamble (handles LI-COR `DATAH`/`DATAU`/`DATA` markers, case-insensitive). **The
+  matching timeline is built from the local `DATE`+`TIME` columns when present**, not
+  the `SECONDS` column — real exports put true-unix in `SECONDS` (a different
+  timezone from the field notes), so using it would misalign matching by the UTC
+  offset. Falls back to `SECONDS` only when DATE/TIME are absent.
+- `temperature.py` reads `.xlsx`/`.csv`/`.txt`, auto-detects tab/`;`/`,` delimiters,
+  resolves the date and temperature columns flexibly (e.g. `Temp(°C)`), and parses
+  **day-first** dotted dates (`DD.MM.YYYY HH:MM`). Unreadable → clean `ValueError`.
+- `notes.py` auto-detects the delimiter for `.csv`/`.txt`/`.tsv` (tab/`;`/`,`);
+  **normalises header whitespace** (a Word table cell may wrap `Light/dark` as
+  `"Light\n/dark"` — the newline must not break resolution); recognises Polish
+  headers incl. `Punkt`/`Pkt` (number), `Chamber`/`Komora` (light/dark), `End`
+  (stop), `Gdzie`/`comment`/`komentarz`/`uwagi` (location, shown as "Comment" in the
+  UI + export); a bare `?` GPS counts as missing.
+  Spot `nr` is renumbered 1..N when the file's numbers are absent/zero or collide
+  (e.g. a `4` and a `4.5` light/dark pair). All note/temperature times are read as
+  naive wall-clock so they line up with the LI-7810 DATE/TIME.
+
 The `flux/` package is the scientific core (pure, **never LLM-touched**):
 `regression.py` (`fit_slope` via `scipy.stats.linregress`), `flux.py`
 (`compute_flux` → the `FluxLadder`, closed-chamber formula `F = dC/dt · P·V/(R·T·A)`,
 CH₄ ppb→ppm, CO₂-equivalent via GWP), `pipeline.py` (`fit_spot`: window
 start+30 s→+5 min 30 s, nan drop/count, `low_r2`/`short_window` flags), and
 `constants.py` (gas constants, molar masses, GWP, thresholds — the tunable numbers).
+**Fit window:** `fit_spot` no longer uses a fixed offset — it **slides a
+`FIT_WINDOW_SECONDS` window and picks the most-linear position** (max CO₂ R², ties
+broken toward `FIT_SKIP_SECONDS` so clean spots are unchanged), up to
+`FIT_SEARCH_MAX_OFFSET_SECONDS` after the recorded start; the same window is applied
+to both gases and the chosen offset is reported (`fit_offset_s`, logged + shown in
+the per-spot fit window). This absorbs the lag between hand-recorded times and the
+instrument clock (the main cause of spuriously low R²). `parse_li7810` also drops
+CO₂ ≥ `MAX_VALID_CO2_PPM` (1500 ppm) sensor spikes, matching the R method.
 **Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`.
 `reference/flux_reference.R` exists but is a **Python-derived scaffold** (so it can't
 independently validate yet) — `# TODO: re-validate` once the real, independent R

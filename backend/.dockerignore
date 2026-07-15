@@ -1,0 +1,29 @@
+# Keep secrets, local data, caches, and dev cruft out of the build context /
+# image. Anything here is never copied by `COPY` in the Dockerfile.
+
+# Secrets — never bake into an image
+.env
+.env.*
+!.env.example
+
+# Local runtime data: uploaded files + SQLite database
+data/
+*.db
+
+# Python bytecode / virtualenvs
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Tests and dev-only assets are not needed in the runtime image
+tests/
+
+# VCS / editor
+.git/
+.gitignore

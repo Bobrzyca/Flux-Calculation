@@ -1,0 +1,10 @@
+# Project-root secrets — never commit. The per-app .gitignore files also
+# ignore their own .env; this covers the compose .env at the repo root.
+.env
+.env.*
+!.env.example
+
+# Local raw field data (large campaign files) and stray/backup files.
+input_data/
+HTTPS
+*.bak

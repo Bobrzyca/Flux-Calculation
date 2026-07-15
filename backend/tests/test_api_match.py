@@ -66,6 +66,53 @@ def test_low_r2_spot_still_computes(client: TestClient, session: Session) -> Non
     assert min(f.r2 for f in spot2.flux_results) < 0.80
 
 
+def test_match_without_pressure_uses_default(
+    client: TestClient, session: Session
+) -> None:
+    # Create an analysis with no pressure file, then match: flux is still computed
+    # (using the default pressure) and every computed spot is flagged no_pressure.
+    files = sample_files()
+    del files["pressure"]
+    analysis_id = str(
+        client.post(
+            "/api/analyses", data=sample_form(name="No pressure"), files=files
+        ).json()["id"]
+    )
+
+    summary = client.post(f"/api/analyses/{analysis_id}/match").json()
+    assert summary["status"] == "complete"
+    assert summary["spots_computed"] == 2
+    assert summary["flux_results"] == 4  # flux still computed via default pressure
+
+    # Every computed spot carries the no_pressure flag in the results.
+    results = client.get(f"/api/analyses/{analysis_id}/results").json()
+    computed = [s for s in results["spots"] if not s["skipped"]]
+    assert computed
+    assert all("no_pressure" in s["flags"] for s in computed)
+
+    analysis = session.get(Analysis, analysis_id)
+    assert analysis is not None
+    messages = [e.message for e in analysis.log_entries]
+    assert any("1 atm" in m and "hPa" in m for m in messages)
+
+
+def test_match_derives_date_from_concentration(
+    client: TestClient, session: Session
+) -> None:
+    # A wrong hand-typed work_date must not break matching: the concentration
+    # file's own date is authoritative and is used (and recorded) instead.
+    form = sample_form(name="Wrong date")
+    form["work_date"] = "2026-07-14"  # sample data is actually 2026-07-02
+    aid = client.post("/api/analyses", data=form, files=sample_files()).json()["id"]
+
+    summary = client.post(f"/api/analyses/{aid}/match").json()
+    assert summary["spots_computed"] == 2  # matched despite the wrong form date
+
+    analysis = session.get(Analysis, aid)
+    assert analysis is not None
+    assert str(analysis.work_date) == "2026-07-02"  # corrected to the data's date
+
+
 def test_match_is_idempotent(client: TestClient, session: Session) -> None:
     analysis_id = _create(client)
     first = client.post(f"/api/analyses/{analysis_id}/match").json()

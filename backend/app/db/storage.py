@@ -50,6 +50,23 @@ def delete_analysis_files(analysis_id: str) -> None:
         shutil.rmtree(directory)
 
 
+def remove_stored(analysis_id: str, role: str) -> None:
+    """Delete any stored file(s) for a role (all extensions), if present.
+
+    Used when replacing a file so a new upload with a different extension can't
+    leave the old one behind (``find_stored`` globs ``<role>.*``).
+    """
+    if role not in ALLOWED_ROLES:
+        raise ValueError(
+            f"Unknown file role {role!r}; expected one of {sorted(ALLOWED_ROLES)}"
+        )
+    directory = analysis_dir(analysis_id)
+    if not directory.is_dir():
+        return
+    for existing in directory.glob(f"{role}.*"):
+        existing.unlink()
+
+
 def find_stored(analysis_id: str, role: str) -> Path | None:
     """Return the stored file for a role (any extension), or None if absent."""
     if role not in ALLOWED_ROLES:

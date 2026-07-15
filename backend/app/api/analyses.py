@@ -23,8 +23,10 @@ from app.schemas.analysis import AnalysisDetail, AnalysisSummary
 
 router = APIRouter(prefix="/api", tags=["analyses"])
 
-# The four raw inputs, in upload-field order.
+# The raw inputs, in upload-field order. Pressure is optional (IMGW file may be
+# absent); when it's missing the flux math falls back to a default pressure.
 _FILE_ROLES = ("concentration", "notes", "temperature", "pressure")
+_REQUIRED_ROLES = ("concentration", "notes", "temperature")
 
 # Per-file upload cap (~50 MB, per the brief).
 MAX_UPLOAD_MB = 50
@@ -43,6 +45,35 @@ def _to_detail(analysis: Analysis, spot_count: int) -> AnalysisDetail:
         chamber_volume_l=analysis.chamber_volume_l,
         time_offset_seconds=analysis.time_offset_seconds,
     )
+
+
+def _rebuild_spots_from_notes(session: Session, analysis_id: str) -> int:
+    """(Re)build ``Spot`` rows from the stored notes file; return the row count.
+
+    Raises a clean 422 (``bad_notes``) if the notes file can't be parsed.
+    """
+    notes_path = storage.find_stored(analysis_id, "notes")
+    if notes_path is None:
+        return 0
+    try:
+        rows = validate_notes(parse_notes(notes_path))
+    except (ValueError, OSError) as exc:
+        raise api_error(
+            422, "bad_notes", f"Couldn't read the notes file: {exc}", field="notes"
+        ) from exc
+    for note in rows:
+        session.add(
+            Spot(
+                analysis_id=analysis_id,
+                nr=note.nr,
+                gps=note.gps,
+                light_dark=note.light_dark,
+                location_desc=note.location,
+                start_time=note.start_time,
+                stop_time=note.stop_time,
+            )
+        )
+    return len(rows)
 
 
 def _content_looks_like_li7810(filename: str, content: bytes) -> bool:
@@ -76,18 +107,24 @@ async def create_analysis(
         "pressure": pressure,
     }
 
-    # 1. All four files present.
-    for role in _FILE_ROLES:
+    # 1. All required files present (pressure is optional).
+    for role in _REQUIRED_ROLES:
         upload = uploads[role]
         if upload is None or not upload.filename:
             raise api_error(
                 422, "missing_file", f"The {role} file is required.", field=role
             )
 
-    contents = {role: await uploads[role].read() for role in _FILE_ROLES}  # type: ignore[union-attr]
+    # Only the files that were actually uploaded (required + any optional ones).
+    present = [
+        role
+        for role in _FILE_ROLES
+        if uploads[role] is not None and uploads[role].filename  # type: ignore[union-attr]
+    ]
+    contents = {role: await uploads[role].read() for role in present}  # type: ignore[union-attr]
 
     # Reject oversized uploads (protects memory / disk on this local box).
-    for role in _FILE_ROLES:
+    for role in present:
         if len(contents[role]) > MAX_UPLOAD_BYTES:
             raise api_error(
                 422,
@@ -126,36 +163,140 @@ async def create_analysis(
     session.add(analysis)
     session.flush()  # assign analysis.id before we save files under it
 
-    for role in _FILE_ROLES:
+    for role in present:
         upload = uploads[role]
         assert upload is not None  # validated above
         storage.save_upload(analysis.id, role, upload.filename or role, contents[role])
 
-    notes_path = storage.find_stored(analysis.id, "notes")
-    rows = validate_notes(parse_notes(notes_path)) if notes_path else []
-    for note in rows:
-        session.add(
-            Spot(
-                analysis_id=analysis.id,
-                nr=note.nr,
-                gps=note.gps,
-                light_dark=note.light_dark,
-                location_desc=note.location,
-                start_time=note.start_time,
-                stop_time=note.stop_time,
-            )
-        )
-
+    spot_count = _rebuild_spots_from_notes(session, analysis.id)
     session.add(
         ProcessingLogEntry(
             analysis_id=analysis.id,
             severity="info",
-            message=f"Analysis created; parsed {len(rows)} note rows for review.",
+            message=f"Analysis created; parsed {spot_count} note rows for review.",
         )
     )
     session.commit()
     session.refresh(analysis)
-    return _to_detail(analysis, spot_count=len(rows))
+    return _to_detail(analysis, spot_count=spot_count)
+
+
+@router.put("/analyses/{analysis_id}", response_model=AnalysisDetail)
+async def update_analysis(
+    analysis_id: str,
+    name: str = Form(...),
+    work_date: date = Form(...),
+    chamber_area_m2: float = Form(...),
+    chamber_volume_l: float = Form(...),
+    time_offset_seconds: float = Form(0.0),
+    concentration: UploadFile | None = File(None),
+    notes: UploadFile | None = File(None),
+    temperature: UploadFile | None = File(None),
+    pressure: UploadFile | None = File(None),
+    session: Session = Depends(get_session),
+) -> AnalysisDetail:
+    """Edit an existing analysis: update its settings and **replace** any files.
+
+    Only files actually uploaded are replaced; the rest are kept. Any provided
+    concentration file is re-validated as LI-7810. Replacing files invalidates
+    prior results, so the analysis is reset to ``needs_review`` and its computed
+    rows are cleared (re-confirm the notes and re-match). Used by the "change
+    files / re-run" flow on an archived analysis.
+    """
+    analysis = session.get(Analysis, analysis_id)
+    if analysis is None:
+        raise api_error(404, "not_found", f"Analysis {analysis_id} not found.")
+
+    uploads = {
+        "concentration": concentration,
+        "notes": notes,
+        "temperature": temperature,
+        "pressure": pressure,
+    }
+    present = [
+        role
+        for role in _FILE_ROLES
+        if uploads[role] is not None and uploads[role].filename  # type: ignore[union-attr]
+    ]
+    contents = {role: await uploads[role].read() for role in present}  # type: ignore[union-attr]
+
+    for role in present:
+        if len(contents[role]) > MAX_UPLOAD_BYTES:
+            raise api_error(
+                422,
+                "file_too_large",
+                f"The {role} file exceeds the {MAX_UPLOAD_MB} MB limit.",
+                field=role,
+            )
+
+    # A replaced concentration file must still be a LI-7810 export.
+    if "concentration" in present:
+        conc_name = concentration.filename if concentration else "concentration"
+        if not _content_looks_like_li7810(conc_name or "", contents["concentration"]):
+            raise api_error(
+                422,
+                "bad_li7810",
+                "This doesn't look like a LI-7810 export — expected columns "
+                "SECONDS, CO2, CH4.",
+                field="concentration",
+            )
+
+    # Reject a rename that collides with a *different* analysis.
+    clash = session.exec(
+        select(Analysis).where(Analysis.name == name, col(Analysis.id) != analysis_id)
+    ).first()
+    if clash is not None:
+        raise api_error(
+            409, "duplicate_name", f'An analysis named "{name}" already exists.', "name"
+        )
+
+    analysis.name = name
+    analysis.work_date = work_date
+    analysis.chamber_area_m2 = chamber_area_m2
+    analysis.chamber_volume_l = chamber_volume_l
+    analysis.time_offset_seconds = time_offset_seconds
+    analysis.status = "needs_review"
+
+    # Overwrite the replaced files (clearing the old extension first).
+    for role in present:
+        upload = uploads[role]
+        assert upload is not None
+        storage.remove_stored(analysis_id, role)
+        storage.save_upload(analysis_id, role, upload.filename or role, contents[role])
+
+    # Replaced inputs invalidate the computed results — drop them. If the notes
+    # were replaced, drop the spots too (they're rebuilt from the new notes).
+    for spot in analysis.spots:
+        for reading in spot.readings:
+            session.delete(reading)
+        for flux in spot.flux_results:
+            session.delete(flux)
+        if "notes" in present:
+            session.delete(spot)
+    for entry in analysis.log_entries:
+        session.delete(entry)
+    session.flush()
+    # Reload the relationship collections so they no longer reference the
+    # just-deleted rows (which would break the later commit's cascade).
+    session.expire(analysis)
+
+    if "notes" in present:
+        spot_count = _rebuild_spots_from_notes(session, analysis_id)
+    else:
+        spot_count = len(analysis.spots)
+
+    changed = ", ".join(present) if present else "settings only"
+    session.add(
+        ProcessingLogEntry(
+            analysis_id=analysis_id,
+            severity="info",
+            message=f"Analysis updated ({changed}); re-confirm notes and re-match.",
+        )
+    )
+    session.add(analysis)
+    session.commit()
+    session.refresh(analysis)
+    return _to_detail(analysis, spot_count=spot_count)
 
 
 @router.get("/analyses", response_model=list[AnalysisSummary])

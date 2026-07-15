@@ -4,7 +4,6 @@ import type { AnalysisSummary } from '@/api/types'
 import { api } from '@/api/client'
 import { useAsync } from '@/hooks/useAsync'
 import {
-  Button,
   Card,
   StatusChip,
   EmptyState,
@@ -14,7 +13,7 @@ import {
   ConfirmDialog,
   useToast,
 } from '@/components'
-import { PlusIcon, TrashIcon, UploadIcon } from '@/components/icons'
+import { TrashIcon, UploadIcon } from '@/components/icons'
 import { formatDate, formatDateTime } from '@/lib/format'
 
 /** Where a card opens, based on how far the analysis progressed. */
@@ -39,19 +38,12 @@ export function Home() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text">Your analyses</h1>
-          <p className="mt-1 text-sm text-muted">
-            From messy field notes to clean fluxes.
-          </p>
-        </div>
-        <Button
-          leftIcon={<PlusIcon className="h-4 w-4" />}
-          onClick={() => navigate('/analyses/new')}
-        >
-          New analysis
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold text-text">Archival analyses</h1>
+        <p className="mt-1 text-sm text-muted">
+          Your saved campaigns — open one to review its fluxes, or start a fresh
+          run with “New analysis”.
+        </p>
       </div>
 
       {loading && <SkeletonCards count={3} />}
@@ -68,15 +60,7 @@ export function Home() {
         <EmptyState
           icon={<UploadIcon className="h-6 w-6" />}
           title="No analyses yet"
-          description="Upload your LI-7810, time notes, temperature and pressure files to calculate your first fluxes."
-          action={
-            <Button
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => navigate('/analyses/new')}
-            >
-              New analysis
-            </Button>
-          }
+          description="Use “New analysis” at the top right to upload your LI-7810, time notes and temperature files (pressure optional) and calculate your first fluxes."
         />
       )}
 

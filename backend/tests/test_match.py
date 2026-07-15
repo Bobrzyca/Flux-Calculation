@@ -78,11 +78,18 @@ def test_match_spot_normal() -> None:
         1, _stream(), "09:01:00", "09:03:00", WORK_DATE, 0, _temperature(), _pressure()
     )
     assert not match.skipped
-    assert len(match.readings) == 121
-    # Nearest to start (BASE+60): temp row BASE+0 (18.0), pressure BASE+0 (1013.0).
-    assert match.temperature_used == 18.0
+    # A fixed-length window is sliced from the start (FIT_WINDOW + search offset =
+    # 480 s) so the fit step can find the most-linear sub-window; the recorded
+    # stop is only used to reject stop-before-start.
+    assert len(match.readings) == 480
+    # Temperature is attached per-reading (nearest in time), so several logger
+    # values fall inside the 480 s window; the scalar is their mean.
+    assert set(match.readings["temperature_used"].unique()) <= {18.0, 18.5, 19.0}
+    assert match.readings["temperature_used"].nunique() >= 2
+    assert match.temperature_used is not None
+    assert 18.0 <= match.temperature_used <= 19.0
+    # Pressure is a single nearest value (BASE+0 -> 1013.0).
     assert match.pressure_used == 1013.0
-    assert (match.readings["temperature_used"] == 18.0).all()
     assert (match.readings["pressure_used"] == 1013.0).all()
 
 

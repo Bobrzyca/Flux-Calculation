@@ -1,0 +1,42 @@
+# Traefik dynamic configuration (file provider).
+#
+# We drive routing from this file instead of the Docker provider because Docker
+# Engine 29.x raised its minimum client API version to 1.40, while Traefik's
+# Docker provider pins its client to API 1.24 and does not negotiate upward — so
+# every socket call is rejected ("client version 1.24 is too old") and no
+# routers are discovered. The file provider needs no Docker socket, so it side-
+# steps the version mismatch entirely while producing identical routing.
+#
+# Backends are addressed by their compose service name over the shared `flux-net`
+# bridge (Docker's embedded DNS resolves `backend` / `frontend`). Entrypoints and
+# the Let's Encrypt resolver still come from the static config in docker-compose.yml.
+http:
+  routers:
+    # Host + /api prefix, higher priority so it wins over the frontend catch-all
+    # for any /api request. The /api prefix is forwarded unchanged (no strip).
+    flux-backend:
+      rule: "Host(`flux-calculation.aibr.cz`) && PathPrefix(`/api`)"
+      entryPoints:
+        - websecure
+      service: flux-backend
+      priority: 100
+      tls:
+        certResolver: letsencrypt
+    # Catch-all for the host — SPA + static assets. /api is claimed above first.
+    flux-frontend:
+      rule: "Host(`flux-calculation.aibr.cz`)"
+      entryPoints:
+        - websecure
+      service: flux-frontend
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    flux-backend:
+      loadBalancer:
+        servers:
+          - url: "http://backend:8000"
+    flux-frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:80"

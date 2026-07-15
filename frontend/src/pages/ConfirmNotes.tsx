@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api } from '@/api/client'
+import { api, ApiError } from '@/api/client'
 import type { LightDark, NoteRow } from '@/api/types'
 import { useAsync } from '@/hooks/useAsync'
 import {
@@ -63,6 +63,7 @@ export function ConfirmNotes() {
   const [rows, setRows] = useState<NoteRow[]>([])
   const [running, setRunning] = useState(false)
   const [steps, setSteps] = useState<PipelineStep[]>([])
+  const [runError, setRunError] = useState<string | null>(null)
 
   useEffect(() => {
     if (data) setRows(data.rows)
@@ -101,34 +102,41 @@ export function ConfirmNotes() {
 
   async function approve() {
     if (hardErrorCount > 0) return
+    setRunError(null)
     setRunning(true)
-    setSteps([
-      { label: 'Saving your confirmed notes', status: 'active' },
-      {
-        label: 'Matching temperature & pressure to each spot',
-        status: 'pending',
-      },
-      { label: 'Fitting CO₂ and CH₄ slopes', status: 'pending' },
-    ])
-    await api.saveNotes(id!, rows)
-    setSteps([
-      { label: 'Saving your confirmed notes', status: 'done' },
-      {
-        label: 'Matching temperature & pressure to each spot',
-        status: 'active',
-      },
-      { label: 'Fitting CO₂ and CH₄ slopes', status: 'pending' },
-    ])
-    await sleep(600)
-    setSteps([
-      { label: 'Saving your confirmed notes', status: 'done' },
-      { label: 'Matching temperature & pressure to each spot', status: 'done' },
-      { label: 'Fitting CO₂ and CH₄ slopes', status: 'active' },
-    ])
-    await api.matchAndCompute(id!)
-    setSteps((s) => s.map((x) => ({ ...x, status: 'done' })))
-    await sleep(300)
-    navigate(`/analyses/${id}/results`)
+    const stepLabels = [
+      'Saving your confirmed notes',
+      'Matching temperature & pressure to each spot',
+      'Fitting CO₂ and CH₄ slopes',
+    ]
+    const stepsAt = (activeIndex: number): PipelineStep[] =>
+      stepLabels.map((label, i) => ({
+        label,
+        status:
+          i < activeIndex ? 'done' : i === activeIndex ? 'active' : 'pending',
+      }))
+    try {
+      setSteps(stepsAt(0))
+      await api.saveNotes(id!, rows)
+      setSteps(stepsAt(1))
+      await sleep(600)
+      setSteps(stepsAt(2))
+      await api.matchAndCompute(id!)
+      setSteps((s) => s.map((x) => ({ ...x, status: 'done' })))
+      await sleep(300)
+      navigate(`/analyses/${id}/results`)
+    } catch (err) {
+      // Never leave the user stuck on the spinner: surface the error and let
+      // them fix it (e.g. an unreadable temperature file) and retry.
+      setRunning(false)
+      setRunError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Matching failed. Please try again.',
+      )
+    }
   }
 
   if (running) {
@@ -156,6 +164,16 @@ export function ConfirmNotes() {
           Review the cleaned field notes before we match the data.
         </p>
       </div>
+
+      {runError && (
+        <Banner
+          tone="error"
+          title="Matching couldn't finish"
+          onDismiss={() => setRunError(null)}
+        >
+          {runError}
+        </Banner>
+      )}
 
       {/* TODO: LLM field-notes parser (seminar 6) — the deterministic backend
           parser always succeeds today, so parse_failed is currently false. */}
@@ -226,7 +244,7 @@ export function ConfirmNotes() {
                       Light/Dark
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Location
+                      Comment
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
                       <span className="sr-only">Actions</span>
@@ -305,8 +323,8 @@ export function ConfirmNotes() {
                         <td className="px-2 py-1.5">
                           <CellInput
                             value={row.location}
-                            ariaLabel={`Location for spot ${row.nr}`}
-                            placeholder="location"
+                            ariaLabel={`Comment for spot ${row.nr}`}
+                            placeholder="comment"
                             onChange={(v) => updateRow(row.nr, { location: v })}
                           />
                         </td>

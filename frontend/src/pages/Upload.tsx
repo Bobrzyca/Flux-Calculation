@@ -39,7 +39,10 @@ export function Upload() {
   )
 
   const [name, setName] = useState('')
-  const [workDate, setWorkDate] = useState('2026-07-14')
+  // Fallback only — the backend uses the date from the LI-7810 file itself.
+  const [workDate, setWorkDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  )
   const [files, setFiles] = useState<Files>({
     concentration: null,
     notes: null,
@@ -72,10 +75,14 @@ export function Upload() {
   function validate(): boolean {
     const next: Record<string, string> = {}
     if (!name.trim()) next.name = 'Give this analysis a name.'
-    if (!files.concentration) next.concentration = 'Required file missing.'
-    if (!files.notes) next.notes = 'Required file missing.'
-    if (!files.temperature) next.temperature = 'Required file missing.'
-    if (!files.pressure) next.pressure = 'Required file missing.'
+    // On a re-run, files are optional — an empty dropzone keeps the current
+    // file. On a fresh analysis the first three are required.
+    if (!isRerun) {
+      if (!files.concentration) next.concentration = 'Required file missing.'
+      if (!files.notes) next.notes = 'Required file missing.'
+      if (!files.temperature) next.temperature = 'Required file missing.'
+    }
+    // Pressure is optional — the backend falls back to a standard default.
     if (!(Number(area) > 0)) next.area = 'Enter a positive number.'
     if (!(Number(volume) > 0)) next.volume = 'Enter a positive number.'
     if (offset.trim() === '' || Number.isNaN(Number(offset)))
@@ -100,16 +107,18 @@ export function Upload() {
 
     setRunning(true)
     setSteps([
-      { label: 'Uploading your four files', status: 'active' },
+      { label: 'Uploading your files', status: 'active' },
       { label: 'Parsing field notes with the assistant', status: 'pending' },
     ])
     try {
       await sleep(600)
       setSteps([
-        { label: 'Uploading your four files', status: 'done' },
+        { label: 'Uploading your files', status: 'done' },
         { label: 'Parsing field notes with the assistant', status: 'active' },
       ])
-      const analysis = await api.createAnalysis(input)
+      const analysis = isRerun
+        ? await api.updateAnalysis(id!, input)
+        : await api.createAnalysis(input)
       setSteps((s) => s.map((x) => ({ ...x, status: 'done' })))
       await sleep(300)
       navigate(`/analyses/${analysis.id}/confirm`)
@@ -148,7 +157,9 @@ export function Upload() {
           {isRerun ? 'Re-run analysis' : 'New analysis'}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Upload your four field files and set the chamber constants, then run.
+          {isRerun
+            ? 'Replace any files you want to change (leave a dropzone empty to keep the current file), adjust the constants, then re-run.'
+            : 'Upload your field files and set the chamber constants, then run.'}
         </p>
       </div>
 
@@ -172,6 +183,7 @@ export function Upload() {
             label="Work date"
             required
             value={workDate}
+            helper="Auto-detected from the LI-7810 file; this is only a fallback."
             onChange={(e) => setWorkDate(e.target.value)}
           />
         </div>
@@ -179,43 +191,54 @@ export function Upload() {
 
       <CardSection
         title="Field files"
-        description="All four are required. Max 50 MB each."
+        description={
+          isRerun
+            ? 'Leave a dropzone empty to keep the current file. Max 50 MB each.'
+            : 'The first three are required; the IMGW pressure file is optional. Max 50 MB each.'
+        }
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Dropzone
             label="LI-7810 concentration"
-            acceptHint=".txt"
+            acceptHint={isRerun ? '.txt — leave empty to keep current' : '.txt'}
             accept={FILE_ACCEPT.concentration}
             file={files.concentration}
             onChange={setFile('concentration')}
             error={errors.concentration}
-            required
+            required={!isRerun}
           />
           <Dropzone
             label="Time-window notes"
-            acceptHint=".docx, .xlsx, .csv"
+            acceptHint={
+              isRerun
+                ? '.docx, .xlsx, .csv — leave empty to keep current'
+                : '.docx, .xlsx, .csv'
+            }
             accept={FILE_ACCEPT.notes}
             file={files.notes}
             onChange={setFile('notes')}
             error={errors.notes}
-            required
+            required={!isRerun}
           />
           <Dropzone
             label="Temperature"
-            acceptHint=".xlsx"
+            acceptHint={
+              isRerun
+                ? '.xlsx, .csv — leave empty to keep current'
+                : '.xlsx, .csv'
+            }
             accept={FILE_ACCEPT.temperature}
             file={files.temperature}
             onChange={setFile('temperature')}
             error={errors.temperature}
-            required
+            required={!isRerun}
           />
           <Dropzone
-            label="IMGW pressure"
-            acceptHint="any format"
+            label="IMGW pressure (optional)"
+            acceptHint="any format — optional"
             file={files.pressure}
             onChange={setFile('pressure')}
             error={errors.pressure}
-            required
           />
         </div>
       </CardSection>

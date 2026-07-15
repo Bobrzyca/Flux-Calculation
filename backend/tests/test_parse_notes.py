@@ -82,3 +82,56 @@ def test_docx_notes_table(tmp_path: Path) -> None:
     assert len(rows) == 1
     assert rows[0].nr == 2
     assert rows[0].start_time == "10:05:00"
+
+
+def test_real_tab_delimited_polish_headers(tmp_path: Path) -> None:
+    # The real field-notes export: TAB-delimited, Polish headers, a "Gdzie"
+    # (where) location column, an extra "Woda" column we ignore, and a "Light/dark"
+    # column with full "Light"/"Dark" values.
+    f = tmp_path / "notes.csv"
+    f.write_text(
+        "Nr\tnumery\tStart\tStop\tGPS\tLight/dark\tWoda\tGdzie\n"
+        "1\t1\t9.38\t9.44\t770\tLight\tTak\tPow tamy staw blisko\n"
+        "2\t2.\t9.45\t9.51\t809\tDark\tTak\tTroche dalej\n"
+        "4\t4.\t10.04\t10.10\t?\tLight\t\tNa tamie\n",
+        encoding="utf-8",
+    )
+    rows = validate_notes(parse_notes(f))
+    assert [r.nr for r in rows] == [1, 2, 4]
+    assert rows[0].start_time == "09:38:00"
+    assert rows[0].stop_time == "09:44:00"
+    assert [r.light_dark for r in rows] == ["light", "dark", "light"]
+    assert rows[0].location == "Pow tamy staw blisko"  # from the "Gdzie" column
+    assert GPS_MISSING in rows[2].flags  # GPS "?" is missing
+
+
+def test_semicolon_polish_headers_and_unique_nr(tmp_path: Path) -> None:
+    # The real export: semicolon-delimited, headers fid;Punkt;Start;End;Chamber,
+    # CRLF line endings. Punkt->nr, End->stop, Chamber->light/dark. The "4"/"4.5"
+    # pair collides on nr, so spots are renumbered 1..N to stay unique.
+    f = tmp_path / "notes.csv"
+    f.write_text(
+        "fid;Punkt;Start;End;Chamber\r\n"
+        "1;1;09:38:00;09:44:00;Light\r\n"
+        "2;2;09:45:00;09:51:00;Light\r\n"
+        "3;4;10:04:00;10:10:00;Light\r\n"
+        "4;4.5;10:11:00;10:17:00;Dark\r\n",
+        encoding="utf-8",
+    )
+    rows = validate_notes(parse_notes(f))
+    assert [r.nr for r in rows] == [1, 2, 3, 4]  # unique, renumbered
+    assert rows[0].start_time == "09:38:00"
+    assert rows[0].stop_time == "09:44:00"
+    assert [r.light_dark for r in rows] == ["light", "light", "light", "dark"]
+
+
+def test_header_resolution_handles_newlines_and_comment() -> None:
+    # A Word table wraps the header cell as "Light\n/dark" (internal newline);
+    # it must still resolve, and a "comment" column maps to location.
+    from app.parsing.notes import _resolve_columns
+
+    headers = ["Nr", "Start", "Stop", "Light\n/dark", "comment"]
+    resolved = _resolve_columns(headers)
+    assert resolved["light_dark"] == "Light\n/dark"
+    assert resolved["location"] == "comment"
+    assert resolved["nr"] == "Nr"

@@ -1,13 +1,14 @@
-import { useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
-import type { ExportFormat, SpotResult } from '@/api/types'
+import type { ExportFormat, Gas, SpotResult } from '@/api/types'
 import { useAsync } from '@/hooks/useAsync'
 import {
   Stepper,
   Card,
   Button,
   Banner,
+  Skeleton,
   SkeletonTable,
   ErrorState,
   Chip,
@@ -16,6 +17,13 @@ import {
   Tooltip,
   useToast,
 } from '@/components'
+
+// Code-split Plotly: only loads when results (with the graph) render.
+const RegressionPlot = lazy(() =>
+  import('@/components/RegressionPlot').then((m) => ({
+    default: m.RegressionPlot,
+  })),
+)
 import {
   DownloadIcon,
   ListIcon,
@@ -163,7 +171,7 @@ export function Results() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Nr, GPS, location"
+            placeholder="Search Nr, GPS, comment"
             aria-label="Search results"
             className="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-text placeholder:text-muted focus:border-primary"
           />
@@ -225,6 +233,12 @@ export function Results() {
           </Button>
         </div>
       </div>
+
+      {/* Regression graph: concentration time series + fitted flux line, with
+          the chosen (best) window shaded, for a selected spot. */}
+      {results.data && id && navigableNrs.length > 0 && (
+        <SpotGraph analysisId={id} spotNrs={navigableNrs} />
+      )}
 
       {/* Table / states */}
       {results.loading && (
@@ -390,7 +404,19 @@ function ResultRow({ s, onOpen }: { s: SpotResult; onOpen: () => void }) {
         {formatR2(s.r2_ch4)}
       </td>
       <td className="px-3 py-2 text-right tabular-nums text-muted">
-        {formatTemperature(s.temperature_used_c)}
+        {s.temperature_min_c != null && s.temperature_max_c != null ? (
+          <Tooltip
+            content={`Range over the window: ${formatTemperature(
+              s.temperature_min_c,
+            )} – ${formatTemperature(s.temperature_max_c)} (mean used in the flux)`}
+          >
+            <span className="cursor-help underline decoration-dotted">
+              {formatTemperature(s.temperature_used_c)}
+            </span>
+          </Tooltip>
+        ) : (
+          formatTemperature(s.temperature_used_c)
+        )}
       </td>
       <td className="px-3 py-2 text-right tabular-nums text-muted">
         {formatPressure(s.pressure_used_hpa)}
@@ -403,6 +429,86 @@ function ResultRow({ s, onOpen }: { s: SpotResult; onOpen: () => void }) {
         </div>
       </td>
     </tr>
+  )
+}
+
+/** Inline concentration-vs-time graph with the fitted flux line and shaded fit
+ *  window, for a spot the user selects. Lets you verify the match/fit visually
+ *  on the results page without opening each spot. */
+function SpotGraph({
+  analysisId,
+  spotNrs,
+}: {
+  analysisId: string
+  spotNrs: number[]
+}) {
+  const [nr, setNr] = useState(spotNrs[0])
+  const [gas, setGas] = useState<Gas>('CO2')
+  const { data, loading } = useAsync(
+    () => api.getSpotDetail(analysisId, nr),
+    [analysisId, nr],
+  )
+  // If the selected spot vanished from the list (re-run), fall back to the first.
+  const selected = spotNrs.includes(nr) ? nr : spotNrs[0]
+
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="text-sm font-semibold text-text">
+          Regression &amp; time series
+        </h2>
+        <label className="ml-auto flex items-center gap-2 text-sm text-muted">
+          Spot
+          <select
+            aria-label="Graph spot"
+            value={selected}
+            onChange={(e) => setNr(Number(e.target.value))}
+            className="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text focus:border-primary"
+          >
+            {spotNrs.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div
+          role="tablist"
+          aria-label="Gas"
+          className="inline-flex rounded-lg border border-border p-1"
+        >
+          {(['CO2', 'CH4'] as Gas[]).map((g) => (
+            <button
+              key={g}
+              role="tab"
+              aria-selected={gas === g}
+              onClick={() => setGas(g)}
+              className={
+                gas === g
+                  ? 'rounded-md bg-primary px-3 py-1 text-sm font-medium text-white'
+                  : 'rounded-md px-3 py-1 text-sm font-medium text-muted hover:text-text'
+              }
+            >
+              {g === 'CO2' ? 'CO₂' : 'CH₄'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {data && (
+        <p className="mb-2 text-xs text-muted">
+          Fit window {data.fit_window.start} → {data.fit_window.stop}
+          {data.flags.includes('time_shifted') &&
+            ' — shifted to the most-linear part of the measurement'}
+        </p>
+      )}
+      {loading || !data ? (
+        <Skeleton className="h-[340px] w-full" />
+      ) : (
+        <Suspense fallback={<Skeleton className="h-[340px] w-full" />}>
+          <RegressionPlot gas={gas} detail={data.gases[gas]} />
+        </Suspense>
+      )}
+    </Card>
   )
 }
 

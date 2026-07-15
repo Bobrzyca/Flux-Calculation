@@ -12,11 +12,16 @@ from datetime import UTC, date, datetime
 
 import pandas as pd
 
+from app.flux import constants as C
 from app.matching.timeshift import apply_offset
 from app.parsing.pressure import PressureReading
 
 # Per-spot flag emitted here (mirrors the frontend SpotFlag union).
 NO_PRESSURE = "no_pressure"
+
+# Seconds of concentration data to slice from each spot's start: enough for the
+# fit step to slide its FIT_WINDOW to the most-linear position.
+_SLICE_SECONDS = C.FIT_WINDOW_SECONDS + C.FIT_SEARCH_MAX_OFFSET_SECONDS
 
 # The brief wants temperature matched "nearest ≤ ~30 s"; if the closest reading
 # is further than this we still use it but warn so the supervisor can see it.
@@ -69,6 +74,25 @@ def slice_spot(
     start_unix = note_time_to_unix(work_date, start)
     stop_unix = note_time_to_unix(work_date, stop)
     mask = (shifted["timestamp"] >= start_unix) & (shifted["timestamp"] <= stop_unix)
+    return shifted[mask].reset_index(drop=True)
+
+
+def slice_from_start(
+    readings: pd.DataFrame,
+    start: str,
+    work_date: date,
+    offset_seconds: float,
+    seconds: float,
+) -> pd.DataFrame:
+    """Offset-correct ``readings`` and return a fixed-length window from ``start``.
+
+    Returns rows with corrected timestamps in ``[start, start + seconds)``.
+    """
+    shifted = apply_offset(readings, offset_seconds)
+    start_unix = note_time_to_unix(work_date, start)
+    mask = (shifted["timestamp"] >= start_unix) & (
+        shifted["timestamp"] < start_unix + seconds
+    )
     return shifted[mask].reset_index(drop=True)
 
 
@@ -126,7 +150,12 @@ def match_spot(
             logs=[LogMessage("error", f"Spot {nr} skipped: stop before start")],
         )
 
-    window = slice_spot(readings, start, stop, work_date, offset_seconds)
+    # Slice a window that starts at the recorded start and runs long enough for
+    # the fit step to search for the most-linear sub-window (FIT_WINDOW plus the
+    # max search offset), rather than trusting the hand-recorded stop time.
+    window = slice_from_start(
+        readings, start, work_date, offset_seconds, _SLICE_SECONDS
+    )
     if window.empty:
         return SpotMatch(
             nr,
@@ -143,8 +172,15 @@ def match_spot(
             ],
         )
 
-    temperature_used = nearest_temperature(temperature, start_unix)
     pressure_used = nearest_pressure(pressure, start_unix)
+
+    # Attach the nearest temperature to EACH reading (the logger samples ~every
+    # 30 s), so the fit step can use the mean over its window and report a range
+    # rather than a single start-of-spot value.
+    annotated = _attach_temperature(window.copy(), temperature)
+    annotated["pressure_used"] = pressure_used
+    temps = annotated["temperature_used"].dropna()
+    temperature_used = float(temps.mean()) if not temps.empty else None
 
     logs: list[LogMessage] = []
     flags: list[str] = []
@@ -162,9 +198,6 @@ def match_spot(
                 )
             )
 
-    annotated = window.copy()
-    annotated["temperature_used"] = temperature_used
-    annotated["pressure_used"] = pressure_used
     return SpotMatch(
         nr,
         annotated,
@@ -175,3 +208,19 @@ def match_spot(
         flags=flags,
         logs=logs,
     )
+
+
+def _attach_temperature(
+    window: pd.DataFrame, temperature: pd.DataFrame
+) -> pd.DataFrame:
+    """Add a per-reading ``temperature_used`` column (nearest in time)."""
+    if temperature.empty:
+        window["temperature_used"] = float("nan")
+        return window
+    merged = pd.merge_asof(
+        window.sort_values("timestamp").reset_index(drop=True),
+        temperature[["timestamp", "temperature_c"]].sort_values("timestamp"),
+        on="timestamp",
+        direction="nearest",
+    )
+    return merged.rename(columns={"temperature_c": "temperature_used"})

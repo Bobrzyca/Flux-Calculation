@@ -7,6 +7,8 @@ clears the previous results first (supports the overwrite re-run). The endpoint
 stays thin — all math lives in ``flux/`` and ``matching/``.
 """
 
+from datetime import UTC, datetime
+
 import pandas as pd
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
@@ -15,6 +17,7 @@ from app.api.errors import api_error
 from app.db import storage
 from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading
 from app.db.session import get_session
+from app.flux.constants import DEFAULT_PRESSURE_HPA
 from app.flux.pipeline import fit_spot
 from app.matching.match import match_spot
 from app.parsing.li7810 import parse_li7810
@@ -53,21 +56,56 @@ def run_match(
     if analysis is None:
         raise api_error(404, "not_found", f"Analysis {analysis_id} not found.")
 
-    roles = ("concentration", "temperature", "pressure")
-    paths = {role: storage.find_stored(analysis_id, role) for role in roles}
-    missing = [role for role, path in paths.items() if path is None]
+    # Concentration + temperature are required; pressure is optional (default used).
+    required = ("concentration", "temperature")
+    paths = {
+        role: storage.find_stored(analysis_id, role) for role in (*required, "pressure")
+    }
+    missing = [role for role in required if paths[role] is None]
     if missing:
         raise api_error(
             422,
             "missing_stored_file",
             f"Stored file(s) missing: {', '.join(missing)}.",
         )
-    conc_path, temp_path, press_path = (paths[r] for r in roles)
-    assert conc_path and temp_path and press_path  # validated just above
+    conc_path, temp_path = paths["concentration"], paths["temperature"]
+    press_path = paths["pressure"]
+    assert conc_path and temp_path  # validated just above
 
-    readings = parse_li7810(conc_path)
-    temperature = parse_temperature(temp_path)
-    pressure = parse_pressure(press_path)
+    # Parse the stored files. A malformed file is the user's problem, not a
+    # server fault, so surface it as a clean 422 on the right field rather than
+    # letting the exception 500 (which the UI would otherwise hang on).
+    try:
+        readings = parse_li7810(conc_path)
+    except (ValueError, OSError) as exc:
+        raise api_error(
+            422,
+            "bad_concentration",
+            f"Couldn't read the LI-7810 concentration file: {exc}",
+            field="concentration",
+        ) from exc
+    try:
+        temperature = parse_temperature(temp_path)
+    except (ValueError, OSError) as exc:
+        raise api_error(
+            422,
+            "bad_temperature",
+            "Couldn't read the temperature file — expected an .xlsx or .csv "
+            "with a date/time column and a temperature (°C) column.",
+            field="temperature",
+        ) from exc
+    # No pressure file → empty list; nearest_pressure returns None and the flux
+    # falls back to the default pressure below (spot flagged no_pressure).
+    try:
+        pressure = parse_pressure(press_path) if press_path else []
+    except (ValueError, OSError) as exc:
+        raise api_error(
+            422,
+            "bad_pressure",
+            "Couldn't read the pressure file. Remove it to use the default "
+            "pressure, or provide a readable IMGW file.",
+            field="pressure",
+        ) from exc
 
     _clear_previous(session, analysis)
 
@@ -76,6 +114,25 @@ def run_match(
     logs.append(
         ("info", f"Applied time-offset {offset:+g} s to {len(readings)} readings")
     )
+
+    # The note windows are HH:MM only, so they need a date. The concentration
+    # file is authoritative (its DATE column), so derive the work date from it
+    # rather than trusting the hand-typed form field — a wrong date there would
+    # otherwise put every window on the wrong day and match nothing.
+    work_date = analysis.work_date
+    valid_ts = readings["timestamp"].dropna()
+    if not valid_ts.empty:
+        data_date = datetime.fromtimestamp(float(valid_ts.min()), tz=UTC).date()
+        if data_date != analysis.work_date:
+            logs.append(
+                (
+                    "info",
+                    f"Matching against the concentration date {data_date} "
+                    f"(the form said {analysis.work_date}).",
+                )
+            )
+            analysis.work_date = data_date  # correct the record for display/export
+        work_date = data_date
 
     spots = sorted(analysis.spots, key=lambda s: s.nr)
     spots_computed = 0
@@ -87,7 +144,7 @@ def run_match(
             readings,
             spot.start_time,
             spot.stop_time,
-            analysis.work_date,
+            work_date,
             offset,
             temperature,
             pressure,
@@ -104,27 +161,39 @@ def run_match(
                     timestamp=float(row.timestamp),
                     co2_ppm=_num(row.co2_ppm),
                     ch4_ppb=_num(row.ch4_ppb),
-                    temperature_used=matched.temperature_used,
+                    temperature_used=_num(row.temperature_used),
                     pressure_used=matched.pressure_used,
                 )
             )
 
-        if matched.temperature_used is None or matched.pressure_used is None:
+        if matched.temperature_used is None:
             logs.append(
                 (
                     "warning",
-                    f"Spot {spot.nr}: flux not computed (missing temp/pressure)",
+                    f"Spot {spot.nr}: flux not computed (missing temperature)",
                 )
             )
             spots_computed += 1
             continue
+
+        # Pressure is optional: fall back to the default when none was matched.
+        pressure_for_flux = matched.pressure_used
+        if pressure_for_flux is None:
+            pressure_for_flux = DEFAULT_PRESSURE_HPA
+            logs.append(
+                (
+                    "info",
+                    f"Spot {spot.nr}: no pressure file — assuming 1 atm "
+                    f"({DEFAULT_PRESSURE_HPA:.2f} hPa)",
+                )
+            )
 
         logs.append(
             (
                 "info",
                 f"Spot {spot.nr}: matched temperature "
                 f"{matched.temperature_used:.2f} °C, pressure "
-                f"{matched.pressure_used:.1f} hPa to {len(window)} readings",
+                f"{pressure_for_flux:.1f} hPa to {len(window)} readings",
             )
         )
         results = fit_spot(
@@ -132,7 +201,15 @@ def run_match(
             analysis.chamber_area_m2,
             analysis.chamber_volume_l,
             matched.temperature_used,
-            matched.pressure_used,
+            pressure_for_flux,
+        )
+        offset = next(iter(results.values())).fit_offset_s
+        logs.append(
+            (
+                "info",
+                f"Spot {spot.nr}: fit window = start +{int(offset)} s → +"
+                f"{int(offset) + 300} s (most-linear 5-min window)",
+            )
         )
         for gas, gr in results.items():
             if gr.skipped or gr.fit is None or gr.ladder is None:

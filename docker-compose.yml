@@ -1,0 +1,101 @@
+# Production Docker setup for Flux Calculation.
+#
+#   internet ──▶ traefik (80/443, HTTPS) ──▶ frontend (nginx, React bundle)
+#                       └────────────────▶ backend  (FastAPI, /api)
+#
+# Traefik is the only service published to the host (ports 80 + 443). It
+# terminates TLS (Let's Encrypt) and routes by hostname/path to the app
+# containers, which are reachable *only* through it on the shared `flux-net`
+# bridge network:
+#   - Host(kulis.aibr.cz)                    -> frontend  (static bundle + SPA)
+#   - Host(kulis.aibr.cz) && PathPrefix(/api) -> backend   (FastAPI, higher prio)
+#
+# The backend mounts all routes under `/api`, so Traefik forwards the prefix
+# unchanged (no strip middleware). nginx's own /api proxy stays in place as a
+# harmless fallback for non-Traefik runs; in production Traefik matches /api
+# first and reaches the backend directly.
+#
+# Config comes from a project-root .env file (copy .env.example -> .env).
+# Nothing here is started automatically — run `docker compose up -d --build`.
+
+services:
+  traefik:
+    image: traefik:v3.5
+    restart: always
+    command:
+      # --- Providers ---------------------------------------------------------
+      # We use the file provider (./traefik/dynamic.yml), NOT the Docker
+      # provider. Docker Engine 29.x requires client API >= 1.40, but Traefik's
+      # Docker provider pins its client to API 1.24 and never negotiates up, so
+      # the daemon rejects every call ("client version 1.24 is too old") and no
+      # routers get discovered. The file provider needs no Docker socket and so
+      # avoids the mismatch. `watch=true` picks up edits without a restart.
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      # --- Entry points ------------------------------------------------------
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redirect all plain HTTP (web) to HTTPS (websecure). The ACME HTTP
+      # challenge is still answered on :80 — Traefik handles it before the
+      # redirect, so certificate issuance/renewal keeps working.
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # --- Let's Encrypt (ACME HTTP-01 challenge) ----------------------------
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      # The only host-published ports in the whole stack.
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Dynamic routing config (routers + services), read-only.
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      # Persist issued certificates across restarts (acme.json).
+      - letsencrypt:/letsencrypt
+    networks:
+      - flux-net
+
+  backend:
+    build:
+      context: ./backend
+    restart: always
+    # The backend reads all of its settings (APP_NAME, DATA_DIR, DATABASE_URL,
+    # CORS_ORIGINS, LLM_API_KEY) from the project .env via pydantic-settings.
+    env_file:
+      - .env
+    volumes:
+      # Persist uploaded files + the SQLite DB across container rebuilds.
+      - backend-data:/app/data
+    networks:
+      - flux-net
+    # Internal only — reached through Traefik on the /api route; not published.
+    # Routing (Host + /api prefix, priority 100) is defined in traefik/dynamic.yml,
+    # which addresses this service as http://backend:8000 over flux-net.
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the bundle at build time. Default "/api" is relative, so
+        # the browser hits kulis.aibr.cz/api, which Traefik routes to backend.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    restart: always
+    depends_on:
+      - backend
+    # No host port mapping — reachable only through Traefik.
+    # Routing (Host catch-all) is defined in traefik/dynamic.yml, which
+    # addresses this service as http://frontend:80 over flux-net.
+    networks:
+      - flux-net
+
+networks:
+  flux-net:
+    driver: bridge
+
+volumes:
+  backend-data:
+  letsencrypt:
