@@ -45,3 +45,24 @@ MIN_FIT_POINTS = 10
 # R² below this flags a spot's fit as untrustworthy.
 # (assumption — the brief says default 0.80, adjustable in settings.)
 LOW_R2_THRESHOLD = 0.80
+
+# --- Auto window-shortening (fixes a low-R² 5-min fit) ----------------------
+# When the best 5-min window is still below LOW_R2_THRESHOLD, the fitter may
+# *shorten* the window (keeping its best position) down to FIT_SHORTEN_MIN_SECONDS
+# in FIT_SHORTEN_STEP_SECONDS steps, and adopt the shorter length only if it
+# raises R² by at least FIT_SHORTEN_MIN_GAIN. A clean spot (already ≥ threshold)
+# is never shortened, so nothing changes for good measurements. A shortened spot
+# is reported (``window_shortened``) and noted in the processing log.
+FIT_SHORTEN_MIN_SECONDS = 240  # 4 minutes — the shortest window we'll cut to
+FIT_SHORTEN_STEP_SECONDS = 30
+FIT_SHORTEN_MIN_GAIN = 0.02  # required R² improvement to justify a shorter window
+
+# --- Isolated single-point spike removal (despike) -------------------------
+# Field sensors occasionally emit a lone bad value — one sample far off its two
+# immediate neighbours, which agree with each other (a single-point peak/trough
+# every few hundred readings). We drop only such *isolated* spikes (never a run
+# of consecutive off values, which is real signal or a gap). A point is a spike
+# when it deviates from BOTH neighbours in the same direction by more than
+# DESPIKE_K × the robust step scale (median absolute step of the series) while
+# the neighbours themselves stay consistent. Each drop is counted and logged.
+DESPIKE_K = 5.0

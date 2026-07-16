@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { api } from '@/api/client'
-import type { Gas } from '@/api/types'
+import type { FitMode, Gas } from '@/api/types'
 import { useAsync } from '@/hooks/useAsync'
 import {
   Overlay,
@@ -37,9 +37,10 @@ export function SpotDetail({
   onClose,
   onNavigate,
 }: SpotDetailProps) {
+  const [fitMode, setFitMode] = useState<FitMode>('auto')
   const { data, loading, error, reload } = useAsync(
-    () => api.getSpotDetail(analysisId, nr),
-    [analysisId, nr],
+    () => api.getSpotDetail(analysisId, nr, fitMode),
+    [analysisId, nr, fitMode],
   )
   const [gas, setGas] = useState<Gas>('CO2')
 
@@ -101,6 +102,29 @@ export function SpotDetail({
 
       {data && (
         <div className="flex flex-col gap-5">
+          {/* Fit mode: the best (auto) window vs the whole recorded window. */}
+          <div
+            role="tablist"
+            aria-label="Fit mode"
+            className="inline-flex self-start rounded-lg border border-border p-1"
+          >
+            {(['auto', 'full'] as FitMode[]).map((m) => (
+              <button
+                key={m}
+                role="tab"
+                aria-selected={fitMode === m}
+                onClick={() => setFitMode(m)}
+                className={
+                  fitMode === m
+                    ? 'rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-white'
+                    : 'rounded-md px-4 py-1.5 text-sm font-medium text-muted hover:text-text'
+                }
+              >
+                {m === 'auto' ? 'Auto window' : 'Whole recording'}
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <LightDarkTag value={data.light_dark} />
             <span>GPS {data.gps || '—'}</span>
@@ -109,6 +133,21 @@ export function SpotDetail({
               Fit window {data.fit_window.start} → {data.fit_window.stop}
             </span>
           </div>
+
+          {/* How much the fit window moved / was cut (visible supervision). */}
+          <p className="text-sm text-muted">
+            {data.mode === 'full'
+              ? `Fitting the whole recording (${Math.round(
+                  data.fit_window_s,
+                )} s) as-is — no window selection.`
+              : `Window shifted +${Math.round(
+                  data.fit_offset_s,
+                )} s after the recorded start · length ${Math.round(
+                  data.fit_window_s,
+                )} s${
+                  data.window_shortened ? ' · shortened to improve R²' : ''
+                }`}
+          </p>
 
           {data.flags.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -156,6 +195,10 @@ export function SpotDetail({
             <Fact
               label="nan dropped"
               value={String(data.gases[gas].fit.n_dropped_nan)}
+            />
+            <Fact
+              label="Spikes dropped"
+              value={String(data.gases[gas].fit.n_spikes)}
             />
             <Fact label="Unit" value={data.gases[gas].unit} />
             <Fact

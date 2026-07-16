@@ -66,6 +66,8 @@ class GasFit(BaseModel):
     r2: float
     n_points: int
     n_dropped_nan: int
+    # Isolated single-point spikes dropped from this gas within the fit window.
+    n_spikes: int = 0
 
 
 class FluxLadder(BaseModel):
@@ -98,6 +100,14 @@ class SpotDetail(BaseModel):
     gps: str
     light_dark: str
     fit_window: FitWindow
+    # Which fit produced this detail: "auto" (best/shortened window) or "full"
+    # (the whole recorded window, no window search).
+    mode: str = "auto"
+    # Seconds the fit window was shifted after the recorded start (best-window),
+    # its length in seconds, and whether it was shortened to recover a low R².
+    fit_offset_s: float = 0.0
+    fit_window_s: float = 0.0
+    window_shortened: bool = False
     flags: list[str] = Field(default_factory=list)
     gases: dict[str, GasDetail]
 

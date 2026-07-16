@@ -22,6 +22,12 @@ the right field (409 duplicate name, 422 missing-file / bad-LI-7810).
 Run the backend (`uvicorn app.main:app --reload` in `backend/`) alongside
 `npm run dev`; keep the backend's `CORS_ORIGINS` in sync with the dev origin.
 
+**Per-spot fit view:** `SpotDetail` has an **Auto window / Whole recording** toggle
+(`api.getSpotDetail(id, nr, fitMode)`, `fitMode: 'auto' | 'full'` → `?fit_mode=`).
+It shows how far the fit window shifted after the recorded start, its length,
+whether it was shortened to recover R², and the per-gas isolated-spike drop count
+(`SpotDetail.fit_offset_s/fit_window_s/window_shortened`, `GasFit.n_spikes`).
+
 **Deferred features keep their placeholders** end-to-end: `quality_check.available
 === false` → "quality check unavailable" (n8n, `TODO: later seminar`);
 `parse_failed` fallback on Confirm (LLM parser, `TODO: seminar 6`). Neither is built.

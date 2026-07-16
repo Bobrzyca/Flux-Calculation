@@ -107,9 +107,13 @@ def _shift_hhmmss(hhmmss: str, seconds: int) -> str:
 
 
 def _fit_results(
-    analysis: Analysis, readings: list[Reading]
+    analysis: Analysis, readings: list[Reading], mode: str = "auto"
 ) -> dict[str, GasResult] | None:
-    """Recompute both gases from persisted readings; None if unfittable."""
+    """Recompute both gases from persisted readings; None if unfittable.
+
+    ``mode`` is passed through to ``fit_spot``: ``"auto"`` (best/shortened window)
+    or ``"full"`` (fit the whole recorded window as-is).
+    """
     if not readings:
         return None
     temps = [r.temperature_used for r in readings if r.temperature_used is not None]
@@ -128,6 +132,7 @@ def _fit_results(
         analysis.chamber_volume_l,
         sum(temps) / len(temps),
         pressure,
+        mode=mode,
     )
 
 
@@ -258,6 +263,7 @@ def _gas_detail(
             r2=result.fit.r2,
             n_points=result.fit.n_points,
             n_dropped_nan=result.n_dropped_nan,
+            n_spikes=result.n_spikes,
         )
         ladder = result.ladder
         flux_ladder = FluxLadder(
@@ -280,6 +286,7 @@ def _gas_detail(
             r2=0.0,
             n_points=result.n_points,
             n_dropped_nan=result.n_dropped_nan,
+            n_spikes=result.n_spikes,
         )
         flux_ladder = FluxLadder(
             umol_m2_s=0.0,
@@ -298,30 +305,42 @@ def _gas_detail(
 
 @router.get("/analyses/{analysis_id}/spots/{nr}", response_model=SpotDetail | None)
 def get_spot_detail(
-    analysis_id: str, nr: int, session: Session = Depends(get_session)
+    analysis_id: str,
+    nr: int,
+    fit_mode: str = "auto",
+    session: Session = Depends(get_session),
 ) -> SpotDetail | None:
+    """Per-spot detail. ``fit_mode=auto`` (default) uses the best/shortened window;
+    ``fit_mode=full`` fits the whole recorded window as-is (no window search)."""
+    if fit_mode not in ("auto", "full"):
+        raise api_error(422, "bad_fit_mode", "fit_mode must be 'auto' or 'full'.")
     analysis = _get_analysis(session, analysis_id)
     spot = next((s for s in analysis.spots if s.nr == nr), None)
     if spot is None:
         raise api_error(404, "not_found", f"Spot {nr} not found.")
 
     readings = _sorted_readings(spot)
-    fits = _fit_results(analysis, readings)
+    fits = _fit_results(analysis, readings, mode=fit_mode)
     if fits is None:
         return None  # skipped spot / no computable detail
 
     t0 = readings[0].timestamp
     gases = {gas: _gas_detail(gas, readings, fits[gas], t0) for gas in GAS_COLUMN}
-    # Both gases share one chosen window per spot; use it for the header times.
-    offset = int(fits["CO2"].fit_offset_s)
+    # Both gases share one chosen window per spot; use its real bounds (which may
+    # be shortened, or the whole recording in full mode) for the header times.
+    co2 = fits["CO2"]
     return SpotDetail(
         nr=spot.nr,
         gps=spot.gps,
         light_dark=spot.light_dark,
         fit_window=FitWindow(
-            start=_shift_hhmmss(spot.start_time, offset),
-            stop=_shift_hhmmss(spot.start_time, offset + C.FIT_WINDOW_SECONDS),
+            start=_shift_hhmmss(spot.start_time, int(co2.fit_start_s)),
+            stop=_shift_hhmmss(spot.start_time, int(co2.fit_stop_s)),
         ),
+        mode=fit_mode,
+        fit_offset_s=co2.fit_offset_s,
+        fit_window_s=co2.fit_window_s,
+        window_shortened=co2.window_shortened,
         flags=_spot_flags(fits, no_pressure=readings[0].pressure_used is None),
         gases=gases,
     )

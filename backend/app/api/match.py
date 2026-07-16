@@ -17,7 +17,7 @@ from app.api.errors import api_error
 from app.db import storage
 from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading
 from app.db.session import get_session
-from app.flux.constants import DEFAULT_PRESSURE_HPA
+from app.flux.constants import DEFAULT_PRESSURE_HPA, FIT_WINDOW_SECONDS
 from app.flux.pipeline import fit_spot
 from app.matching.match import match_spot
 from app.parsing.li7810 import parse_li7810
@@ -203,15 +203,33 @@ def run_match(
             matched.temperature_used,
             pressure_for_flux,
         )
-        offset = next(iter(results.values())).fit_offset_s
+        chosen = next(iter(results.values()))
+        offset, length = chosen.fit_offset_s, chosen.fit_window_s
         logs.append(
             (
                 "info",
                 f"Spot {spot.nr}: fit window = start +{int(offset)} s → +"
-                f"{int(offset) + 300} s (most-linear 5-min window)",
+                f"{int(offset + length)} s "
+                f"(most-linear {int(length)} s window)",
             )
         )
+        if chosen.window_shortened:
+            logs.append(
+                (
+                    "warning",
+                    f"Spot {spot.nr}: window shortened to {int(length)} s "
+                    f"(< {FIT_WINDOW_SECONDS} s) to improve a low R²",
+                )
+            )
         for gas, gr in results.items():
+            if gr.n_spikes:
+                logs.append(
+                    (
+                        "info",
+                        f"Spot {spot.nr} {gas}: {gr.n_spikes} isolated spike"
+                        f"{'s' if gr.n_spikes != 1 else ''} dropped",
+                    )
+                )
             if gr.skipped or gr.fit is None or gr.ladder is None:
                 logs.append(
                     ("warning", f"Spot {spot.nr} {gas}: skipped ({gr.skip_reason})")

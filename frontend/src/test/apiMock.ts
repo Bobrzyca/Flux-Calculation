@@ -181,7 +181,20 @@ async function handle(
   if (resultsMatch) return json(buildResults())
 
   const spotMatch = path.match(/^\/analyses\/([^/]+)\/spots\/(\d+)$/)
-  if (spotMatch) return json(buildSpotDetail(Number(spotMatch[2])))
+  if (spotMatch) {
+    const detail = buildSpotDetail(Number(spotMatch[2]))
+    if (detail && url.searchParams.get('fit_mode') === 'full') {
+      // Whole-recording mode: no window search, fit the full span from t0.
+      return json({
+        ...detail,
+        mode: 'full' as const,
+        fit_offset_s: 0,
+        fit_window_s: 600,
+        window_shortened: false,
+      })
+    }
+    return json(detail)
+  }
 
   const tsMatch = path.match(/^\/analyses\/([^/]+)\/timeseries$/)
   if (tsMatch) return json(buildTimeseries())

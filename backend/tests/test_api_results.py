@@ -66,6 +66,34 @@ def test_spot_detail(client: TestClient) -> None:
     assert detail["fit_window"]["stop"] == "09:43:30"
 
 
+def test_spot_detail_reports_fit_window_meta(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    detail = client.get(f"/api/analyses/{analysis_id}/spots/1").json()
+    assert detail["mode"] == "auto"
+    assert detail["fit_window_s"] == 300.0  # clean spot -> full 5-min window
+    assert detail["window_shortened"] is False
+    assert "fit_offset_s" in detail
+    assert "n_spikes" in detail["gases"]["CO2"]["fit"]
+
+
+def test_spot_detail_full_mode_fits_whole_recording(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    auto = client.get(f"/api/analyses/{analysis_id}/spots/1").json()
+    full = client.get(f"/api/analyses/{analysis_id}/spots/1?fit_mode=full").json()
+    assert full["mode"] == "full"
+    assert full["fit_offset_s"] == 0.0
+    # The whole recording has at least as many in-window points as the 5-min fit.
+    auto_in = sum(p["in_window"] for p in auto["gases"]["CO2"]["points"])
+    full_in = sum(p["in_window"] for p in full["gases"]["CO2"]["points"])
+    assert full_in >= auto_in
+
+
+def test_spot_detail_bad_fit_mode_422(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.get(f"/api/analyses/{analysis_id}/spots/1?fit_mode=nonsense")
+    assert resp.status_code == 422
+
+
 def test_spot_detail_skipped_is_null(client: TestClient) -> None:
     analysis_id = _create_and_match(client)
     resp = client.get(f"/api/analyses/{analysis_id}/spots/3")  # empty-window skip

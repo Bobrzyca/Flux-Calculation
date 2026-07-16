@@ -511,6 +511,7 @@ function buildGasDetail(
       r2,
       n_points: nPoints,
       n_dropped_nan: nDropped,
+      n_spikes: 0,
     },
     flux_ladder: ladderFrom(
       gas === 'CO2' ? co2Flux(spec) : ch4Flux(spec),
@@ -532,6 +533,10 @@ export function buildSpotDetail(nr: number): SpotDetail | null {
     gps: spec.gps,
     light_dark: spec.light_dark,
     fit_window: { start: spec.start, stop: spec.stop },
+    mode: 'auto',
+    fit_offset_s: 30,
+    fit_window_s: 300,
+    window_shortened: false,
     flags,
     gases: {
       CO2: buildGasDetail(spec, 'CO2', nr * 101 + 1),

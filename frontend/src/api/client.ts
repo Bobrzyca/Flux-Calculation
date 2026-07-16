@@ -15,6 +15,7 @@ import type {
   AnalysisSummary,
   CreateAnalysisInput,
   ExportFormat,
+  FitMode,
   LogEntry,
   NoteRow,
   ParsedNotes,
@@ -150,9 +151,17 @@ export const api = {
     return getJson<ResultsPayload>(`/analyses/${id}/results`)
   },
 
-  /** GET /analyses/{id}/spots/{nr} — null for a skipped spot. */
-  async getSpotDetail(id: string, nr: number): Promise<SpotDetail | null> {
-    const res = await fetch(`${BASE_URL}/analyses/${id}/spots/${nr}`)
+  /**
+   * GET /analyses/{id}/spots/{nr} — null for a skipped spot.
+   * `fitMode` "full" fits the whole recorded window (no window search).
+   */
+  async getSpotDetail(
+    id: string,
+    nr: number,
+    fitMode: FitMode = 'auto',
+  ): Promise<SpotDetail | null> {
+    const query = fitMode === 'auto' ? '' : `?fit_mode=${fitMode}`
+    const res = await fetch(`${BASE_URL}/analyses/${id}/spots/${nr}${query}`)
     if (res.status === 404) return null
     if (!res.ok) throw await toApiError(res)
     return (await res.json()) as SpotDetail | null

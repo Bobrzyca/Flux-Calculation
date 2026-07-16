@@ -130,7 +130,12 @@ export interface GasFit {
   r2: number
   n_points: number
   n_dropped_nan: number
+  /** Isolated single-point spikes dropped from this gas within the fit window. */
+  n_spikes: number
 }
+
+/** How a spot's regression was fitted. */
+export type FitMode = 'auto' | 'full'
 
 export interface GasDetail {
   unit: string // "ppm" | "ppb"
@@ -144,6 +149,14 @@ export interface SpotDetail {
   gps: string
   light_dark: LightDark
   fit_window: { start: string; stop: string }
+  /** Which fit produced this detail: best/shortened window, or the whole recording. */
+  mode: FitMode
+  /** Seconds the fit window was shifted after the recorded start. */
+  fit_offset_s: number
+  /** Fit-window length in seconds (< 300 when shortened; whole span in full mode). */
+  fit_window_s: number
+  /** True when the window was shortened to recover a low R². */
+  window_shortened: boolean
   flags: SpotFlag[]
   gases: Record<Gas, GasDetail>
 }

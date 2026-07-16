@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from app.flux.pipeline import LOW_R2, SHORT_WINDOW, fit_spot
+from app.flux.pipeline import LOW_R2, SHORT_WINDOW, _despike_mask, fit_spot
 
 AREA, VOLUME, TEMP, PRESSURE = 0.0625, 15.625, 20.0, 1013.25
 
@@ -106,3 +106,75 @@ def test_short_window_flag_under_4_minutes() -> None:
     df = _stream(200)  # ~170 s land in the window -> under 4 min
     res = fit_spot(df, AREA, VOLUME, TEMP, PRESSURE)
     assert SHORT_WINDOW in res["CO2"].flags
+
+
+# --- Despike (isolated single-point spikes) --------------------------------
+
+
+def test_despike_mask_flags_lone_spike_not_a_run() -> None:
+    v = np.full(50, 400.0) + 0.03 * np.arange(50)
+    v[20] += 50.0  # a single lone spike
+    mask = _despike_mask(v)
+    assert mask[20] and int(mask.sum()) == 1
+
+    # A run of two off values is NOT a lone spike -> nothing flagged.
+    v2 = np.full(50, 400.0) + 0.03 * np.arange(50)
+    v2[20] += 50.0
+    v2[21] += 50.0
+    assert not _despike_mask(v2).any()
+
+
+def test_despike_drops_spike_from_fit_and_counts_it() -> None:
+    df = _stream(360)
+    df.loc[100, "co2_ppm"] += 80.0  # one lone spike inside the window (rel 100)
+    res = fit_spot(df, AREA, VOLUME, TEMP, PRESSURE)
+    co2 = res["CO2"]
+    assert co2.n_spikes == 1
+    assert co2.n_dropped_nan == 0  # a spike is counted separately from nan gaps
+    assert co2.n_points == 299  # 300 window points minus the dropped spike
+    assert co2.fit is not None and co2.fit.r2 > 0.99  # spike removed -> clean fit
+
+
+def test_clean_stream_drops_no_spikes() -> None:
+    res = fit_spot(_stream(360), AREA, VOLUME, TEMP, PRESSURE)
+    assert res["CO2"].n_spikes == 0 and res["CH4"].n_spikes == 0
+
+
+# --- Window shortening (low-R² fix) ----------------------------------------
+
+
+def test_window_shortens_to_fix_low_r2() -> None:
+    # A clean linear rise for the first 4 min, then noisy scatter: no 5-min window
+    # avoids the noisy tail (low R²), but the 4-min head fits cleanly. The fitter
+    # should shorten the window to recover the good fit.
+    n = 540
+    t = np.arange(n + 1, dtype=float)
+    rng = np.random.default_rng(3)
+    co2 = np.where(t <= 240, 400.0 + 0.05 * t, 412.0 + rng.normal(0, 8.0, size=n + 1))
+    df = pd.DataFrame(
+        {"timestamp": 1000.0 + t, "co2_ppm": co2, "ch4_ppb": 1900.0 + 0.02 * t}
+    )
+    res = fit_spot(df, AREA, VOLUME, TEMP, PRESSURE)
+    co2r = res["CO2"]
+    assert co2r.window_shortened
+    assert 240.0 <= co2r.fit_window_s < 300.0
+    assert co2r.fit is not None and co2r.fit.r2 > 0.95
+
+
+def test_clean_stream_is_not_shortened() -> None:
+    res = fit_spot(_stream(360), AREA, VOLUME, TEMP, PRESSURE)
+    assert not res["CO2"].window_shortened
+    assert res["CO2"].fit_window_s == 300.0
+
+
+# --- Whole-recording ("full") mode -----------------------------------------
+
+
+def test_full_mode_fits_whole_recording() -> None:
+    df = _stream(360)  # 0..360 s
+    res = fit_spot(df, AREA, VOLUME, TEMP, PRESSURE, mode="full")
+    co2 = res["CO2"]
+    assert co2.fit_offset_s == 0.0
+    assert co2.fit_start_s == 0.0
+    assert co2.n_points == 361  # every recorded second, not just the 5-min window
+    assert co2.fit is not None and abs(co2.fit.slope - 0.03) < 1e-6

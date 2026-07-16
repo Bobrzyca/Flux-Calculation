@@ -106,9 +106,13 @@ All four must be **green before every commit** (root rule 2). Write or update a
   `low_r2`/`short_window`/`dropped_nan`/`no_pressure`; skipped spots carry a
   `skip_reason`). `quality_check.available` is **false** with a pending message —
   n8n is deferred (`# TODO: n8n quality check`).
-- `GET /api/analyses/{id}/spots/{nr}` → `SpotDetail` (per-gas points with
-  `in_window`, fit incl. `n_dropped_nan`, `fit_window`, flux ladder); `null` for a
-  skipped spot, 404 if the spot doesn't exist.
+- `GET /api/analyses/{id}/spots/{nr}?fit_mode=auto|full` → `SpotDetail` (per-gas
+  points with `in_window`, fit incl. `n_dropped_nan` + `n_spikes`, `fit_window`,
+  flux ladder) plus the fit meta `mode`, `fit_offset_s`, `fit_window_s`,
+  `window_shortened`. **`fit_mode`** (default `auto`) selects the best/shortened
+  window; **`full`** fits the whole recorded window as-is (no window search) — the
+  "use the file's time series without fitting" view. `null` for a skipped spot, 404
+  if the spot doesn't exist, 422 (`bad_fit_mode`) on an unknown `fit_mode`.
 - `GET /api/analyses/{id}/log` → the `ProcessingLogEntry` rows in order.
 - Read endpoints recompute per-spot fits from the persisted `Reading` rows via the
   same `fit_spot` pipeline (one code path); `FluxResult` stays the durable record
@@ -179,8 +183,21 @@ broken toward `FIT_SKIP_SECONDS` so clean spots are unchanged), up to
 `FIT_SEARCH_MAX_OFFSET_SECONDS` after the recorded start; the same window is applied
 to both gases and the chosen offset is reported (`fit_offset_s`, logged + shown in
 the per-spot fit window). This absorbs the lag between hand-recorded times and the
-instrument clock (the main cause of spuriously low R²). `parse_li7810` also drops
-CO₂ ≥ `MAX_VALID_CO2_PPM` (1500 ppm) sensor spikes, matching the R method.
+instrument clock (the main cause of spuriously low R²).
+**Auto window-shortening:** when the best 5-min window is still below
+`LOW_R2_THRESHOLD`, `fit_spot` may **shorten** it (keeping its best position) down
+to `FIT_SHORTEN_MIN_SECONDS` (4 min) in `FIT_SHORTEN_STEP_SECONDS` steps, adopting a
+shorter length only if it lifts R² by `FIT_SHORTEN_MIN_GAIN`. A clean spot is never
+shortened; a shortened one reports `window_shortened=True`/`fit_window_s` and is
+noted in the log.
+**Despike:** `fit_spot` first drops **isolated single-point spikes** (`_despike_mask`
+— a lone value off both agreeing neighbours by > `DESPIKE_K` × the robust step
+scale; runs are never cut), counted per gas as `n_spikes` (separate from `nan`
+gaps) and logged. `parse_li7810` also drops CO₂ ≥ `MAX_VALID_CO2_PPM` (1500 ppm)
+sensor spikes, matching the R method.
+**Whole-recording mode:** `fit_spot(..., mode="full")` skips the window search and
+fits the entire recorded span as-is (despiking still applies) — surfaced via the
+`fit_mode=full` query param on the spot-detail endpoint.
 **Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`.
 `reference/flux_reference.R` exists but is a **Python-derived scaffold** (so it can't
 independently validate yet) — `# TODO: re-validate` once the real, independent R
