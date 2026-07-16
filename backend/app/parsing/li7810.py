@@ -18,11 +18,13 @@ import pandas as pd
 # The columns the downstream pipeline relies on.
 REQUIRED_COLUMNS = frozenset({"SECONDS", "CO2", "CH4"})
 
-# CO₂ readings at/above this (ppm) are treated as invalid sensor spikes and
-# dropped (set to nan) before fitting — mirrors the R method-of-record's
-# ``subset(fx, CO2 < 1500)`` cleaning step. Ambient is ~400–500 ppm; a chamber
-# rise stays well under this, so values ≥ 1500 are spurious.
+# CO₂ readings outside this (ppm) range are treated as invalid sensor spikes and
+# dropped (set to nan) before fitting. The upper bound mirrors the R
+# method-of-record's ``subset(fx, CO2 < 1500)`` step; ambient is ~400–500 ppm and a
+# chamber rise stays well under 1500, so values ≥ 1500 are spurious. The lower bound
+# catches gross negative faults / error sentinels (real CO₂ is always positive).
 MAX_VALID_CO2_PPM = 1500.0
+MIN_VALID_CO2_PPM = -1500.0
 
 # How many lines to scan for the header before giving up. Real preambles are a
 # handful of lines; this bound keeps us from reading a whole huge non-LI file.
@@ -91,8 +93,12 @@ def parse_li7810(path: str | Path) -> pd.DataFrame:
             "ch4_ppb": pd.to_numeric(raw[ch4], errors="coerce").astype(float),
         }
     )
-    # Drop spurious high-CO₂ spikes (sensor errors) so they can't distort a fit.
-    df.loc[df["co2_ppm"] >= MAX_VALID_CO2_PPM, "co2_ppm"] = float("nan")
+    # Drop spurious CO₂ spikes (sensor errors) outside the valid range so they
+    # can't distort a fit: high (≥ 1500 ppm) and gross-negative (< -1500 ppm).
+    df.loc[
+        (df["co2_ppm"] >= MAX_VALID_CO2_PPM) | (df["co2_ppm"] < MIN_VALID_CO2_PPM),
+        "co2_ppm",
+    ] = float("nan")
     # Drop rows with no usable timestamp (units row / blank trailing lines); keep
     # nan concentrations (warm-up and dropouts) for the matching step to handle.
     return df.dropna(subset=["timestamp"]).reset_index(drop=True)

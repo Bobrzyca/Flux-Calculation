@@ -148,3 +148,20 @@ def test_high_co2_spikes_dropped(tmp_path: Path) -> None:
     assert df["co2_ppm"].isna().iloc[1]  # the 99999 spike -> nan
     assert df["co2_ppm"].iloc[0] == 420.0
     assert df["ch4_ppb"].iloc[1] == 1991.0  # CH4 untouched
+
+
+def test_gross_negative_co2_dropped(tmp_path: Path) -> None:
+    # CO2 < -1500 ppm are gross sensor faults / error sentinels -> dropped (nan).
+    f = tmp_path / "lo.txt"
+    f.write_text(
+        "Model:\tLI-7810\n"
+        "SECONDS\tCO2\tCH4\n"
+        "1782985020\t420.0\t1990.0\n"
+        "1782985021\t-9999.0\t1991.0\n"
+        "1782985022\t421.0\t1992.0\n",
+        encoding="utf-8",
+    )
+    df = parse_li7810(f)
+    assert df["co2_ppm"].isna().iloc[1]  # the -9999 fault -> nan
+    assert df["co2_ppm"].iloc[0] == 420.0
+    assert df["ch4_ppb"].iloc[1] == 1991.0  # CH4 untouched
