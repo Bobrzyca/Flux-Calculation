@@ -94,6 +94,47 @@ def test_spot_detail_bad_fit_mode_422(client: TestClient) -> None:
     assert resp.status_code == 422
 
 
+def test_set_manual_offset_shifts_and_persists(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    base = f"/api/analyses/{analysis_id}"
+
+    # Apply a manual shift to spot 1.
+    put = client.put(f"{base}/spots/1/fit", json={"offset_s": 75})
+    assert put.status_code == 200
+    detail = put.json()
+    assert detail["mode"] == "manual"
+    assert detail["manual_offset_s"] == 75.0
+    assert detail["fit_offset_s"] == 75.0
+
+    # It persists: a fresh GET (default auto mode) still reports the manual window.
+    again = client.get(f"{base}/spots/1").json()
+    assert again["mode"] == "manual"
+    assert again["fit_offset_s"] == 75.0
+
+    # And it flows into the results table.
+    row = next(s for s in client.get(f"{base}/results").json()["spots"] if s["nr"] == 1)
+    assert row["fit_offset_s"] == 75.0
+
+    # Reset restores the automatic window.
+    reset = client.put(f"{base}/spots/1/fit", json={"offset_s": None}).json()
+    assert reset["mode"] == "auto"
+    assert reset["manual_offset_s"] is None
+
+
+def test_set_manual_offset_rejects_negative(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.put(f"/api/analyses/{analysis_id}/spots/1/fit", json={"offset_s": -5})
+    assert resp.status_code == 422
+
+
+def test_set_manual_offset_unknown_spot_404(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.put(
+        f"/api/analyses/{analysis_id}/spots/999/fit", json={"offset_s": 30}
+    )
+    assert resp.status_code == 404
+
+
 def test_spot_detail_skipped_is_null(client: TestClient) -> None:
     analysis_id = _create_and_match(client)
     resp = client.get(f"/api/analyses/{analysis_id}/spots/3")  # empty-window skip

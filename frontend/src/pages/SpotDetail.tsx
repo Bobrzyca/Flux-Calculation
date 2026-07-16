@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { api } from '@/api/client'
 import type { FitMode, Gas } from '@/api/types'
 import { useAsync } from '@/hooks/useAsync'
@@ -30,6 +30,8 @@ interface SpotDetailProps {
   fitMode: FitMode
   onClose: () => void
   onNavigate: (nr: number) => void
+  /** Called after a manual shift is saved, so Results can refresh table + graph. */
+  onFitChanged?: () => void
 }
 
 export function SpotDetail({
@@ -39,12 +41,44 @@ export function SpotDetail({
   fitMode,
   onClose,
   onNavigate,
+  onFitChanged,
 }: SpotDetailProps) {
   const { data, loading, error, reload } = useAsync(
     () => api.getSpotDetail(analysisId, nr, fitMode),
     [analysisId, nr, fitMode],
   )
   const [gas, setGas] = useState<Gas>('CO2')
+
+  // Manual per-spot window shift. The input tracks the current effective offset
+  // (reset when the spot / mode / applied value changes) so the user nudges from
+  // where the fit actually sits.
+  const [offsetInput, setOffsetInput] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (data) setOffsetInput(String(Math.round(data.fit_offset_s)))
+  }, [data?.nr, data?.mode, data?.fit_offset_s])
+
+  async function saveOffset(value: number | null) {
+    setSaving(true)
+    try {
+      await api.setSpotFit(analysisId, nr, value)
+      reload()
+      onFitChanged?.()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function applyOffset() {
+    const v = Number(offsetInput)
+    if (offsetInput.trim() === '' || Number.isNaN(v) || v < 0) return
+    void saveOffset(Math.round(v))
+  }
+
+  function nudge(delta: number) {
+    const base = Number(offsetInput)
+    setOffsetInput(String(Math.max(0, (Number.isNaN(base) ? 0 : base) + delta)))
+  }
 
   const idx = spotNrs.indexOf(nr)
   const prev = idx > 0 ? spotNrs[idx - 1] : null
@@ -119,14 +153,79 @@ export function SpotDetail({
               ? `Fitting the whole recording (${Math.round(
                   data.fit_window_s,
                 )} s) as-is — no window selection.`
-              : `Window shifted +${Math.round(
-                  data.fit_offset_s,
-                )} s after the recorded start · length ${Math.round(
-                  data.fit_window_s,
-                )} s${
-                  data.window_shortened ? ' · shortened to improve R²' : ''
-                }`}
+              : data.mode === 'manual'
+                ? `Manual fit: window starts +${Math.round(
+                    data.fit_offset_s,
+                  )} s after the recorded start · length ${Math.round(
+                    data.fit_window_s,
+                  )} s.`
+                : `Window shifted +${Math.round(
+                    data.fit_offset_s,
+                  )} s after the recorded start · length ${Math.round(
+                    data.fit_window_s,
+                  )} s${
+                    data.window_shortened ? ' · shortened to improve R²' : ''
+                  }`}
           </p>
+
+          {/* Manual per-spot window shift: correct a mis-placed automatic fit. */}
+          <div className="rounded-lg border border-border p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Manual fit window
+              </span>
+              {data.mode === 'manual' && (
+                <span className="rounded bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary">
+                  active
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => nudge(-5)}
+                aria-label="Shift 5 seconds earlier"
+              >
+                −5 s
+              </Button>
+              <input
+                type="number"
+                min={0}
+                value={offsetInput}
+                onChange={(e) => setOffsetInput(e.target.value)}
+                aria-label="Fit window start offset (seconds)"
+                className="h-9 w-24 rounded-lg border border-border bg-surface px-2 text-sm tabular-nums text-text focus:border-primary"
+              />
+              <span className="text-sm text-muted">s</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => nudge(5)}
+                aria-label="Shift 5 seconds later"
+              >
+                +5 s
+              </Button>
+              <Button size="sm" onClick={applyOffset} disabled={saving}>
+                Apply
+              </Button>
+              {data.manual_offset_s !== null && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void saveOffset(null)}
+                  disabled={saving}
+                >
+                  Reset to auto
+                </Button>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              Move where the {Math.round(data.fit_window_s)}-second window
+              starts, for this spot only. Saved — the results table and export
+              follow.
+            </p>
+          </div>
 
           {data.flags.length > 0 && (
             <div className="flex flex-wrap gap-2">

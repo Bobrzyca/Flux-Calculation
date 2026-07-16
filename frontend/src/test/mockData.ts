@@ -537,6 +537,7 @@ export function buildSpotDetail(nr: number): SpotDetail | null {
     fit_offset_s: 30,
     fit_window_s: 300,
     window_shortened: false,
+    manual_offset_s: null,
     flags,
     gases: {
       CO2: buildGasDetail(spec, 'CO2', nr * 101 + 1),

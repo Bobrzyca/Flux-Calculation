@@ -171,6 +171,24 @@ export const api = {
     return (await res.json()) as SpotDetail | null
   },
 
+  /**
+   * PUT /analyses/{id}/spots/{nr}/fit — set (or clear) a spot's manual fit-window
+   * offset. `offsetS` in seconds after the spot's start; `null` restores auto.
+   * Persists the correction and returns the recomputed detail.
+   */
+  async setSpotFit(
+    id: string,
+    nr: number,
+    offsetS: number | null,
+  ): Promise<SpotDetail | null> {
+    const res = await request(`/analyses/${id}/spots/${nr}/fit`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offset_s: offsetS }),
+    })
+    return (await res.json()) as SpotDetail | null
+  },
+
   /** GET /analyses/{id}/log */
   getLog(id: string): Promise<LogEntry[]> {
     return getJson<LogEntry[]>(`/analyses/${id}/log`)

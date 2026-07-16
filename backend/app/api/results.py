@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.api.errors import api_error
-from app.db.models import Analysis, Reading, Spot
+from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading, Spot
 from app.db.session import get_session
 from app.flux import constants as C
 from app.flux.pipeline import GAS_COLUMN, GasResult, fit_spot
@@ -24,6 +24,7 @@ from app.schemas.results import (
     QualityCheck,
     ResultsPayload,
     SpotDetail,
+    SpotFitUpdate,
     SpotResult,
     Timeseries,
     TSGas,
@@ -115,12 +116,16 @@ def _shift_hhmmss(hhmmss: str, seconds: int) -> str:
 
 
 def _fit_results(
-    analysis: Analysis, readings: list[Reading], mode: str = "auto"
+    analysis: Analysis,
+    readings: list[Reading],
+    mode: str = "auto",
+    manual_offset_s: float | None = None,
 ) -> dict[str, GasResult] | None:
     """Recompute both gases from persisted readings; None if unfittable.
 
     ``mode`` is passed through to ``fit_spot``: ``"auto"`` (best/shortened window)
-    or ``"full"`` (fit the whole recorded window as-is).
+    or ``"full"`` (fit the whole recorded window as-is). A ``manual_offset_s``
+    (the spot's saved override) wins over ``mode``.
     """
     if not readings:
         return None
@@ -141,6 +146,7 @@ def _fit_results(
         sum(temps) / len(temps),
         pressure,
         mode=mode,
+        manual_offset_s=manual_offset_s,
     )
 
 
@@ -195,7 +201,9 @@ def get_results(
         # What pressure the flux actually used: the stored value, or the default
         # when none was supplied (pressure is optional).
         pressure = C.DEFAULT_PRESSURE_HPA if no_pressure else readings[0].pressure_used
-        fits = _fit_results(analysis, readings, mode=fit_mode)
+        fits = _fit_results(
+            analysis, readings, mode=fit_mode, manual_offset_s=spot.manual_offset_s
+        )
         if fits is None:
             # Readings exist but temperature missing -> flux not computed.
             spots.append(
@@ -316,31 +324,24 @@ def _gas_detail(
     return GasDetail(unit=unit, points=points, fit=fit, flux_ladder=flux_ladder)
 
 
-@router.get("/analyses/{analysis_id}/spots/{nr}", response_model=SpotDetail | None)
-def get_spot_detail(
-    analysis_id: str,
-    nr: int,
-    fit_mode: str = "auto",
-    session: Session = Depends(get_session),
+def _build_spot_detail(
+    analysis: Analysis, spot: Spot, fit_mode: str
 ) -> SpotDetail | None:
-    """Per-spot detail. ``fit_mode=auto`` (default) uses the best/shortened window;
-    ``fit_mode=full`` fits the whole recorded window as-is (no window search)."""
-    _check_fit_mode(fit_mode)
-    analysis = _get_analysis(session, analysis_id)
-    spot = next((s for s in analysis.spots if s.nr == nr), None)
-    if spot is None:
-        raise api_error(404, "not_found", f"Spot {nr} not found.")
-
+    """Compute one spot's detail. A saved ``manual_offset_s`` overrides ``fit_mode``
+    and reports ``mode="manual"``."""
     readings = _sorted_readings(spot)
-    fits = _fit_results(analysis, readings, mode=fit_mode)
+    fits = _fit_results(
+        analysis, readings, mode=fit_mode, manual_offset_s=spot.manual_offset_s
+    )
     if fits is None:
         return None  # skipped spot / no computable detail
 
     t0 = readings[0].timestamp
     gases = {gas: _gas_detail(gas, readings, fits[gas], t0) for gas in GAS_COLUMN}
     # Both gases share one chosen window per spot; use its real bounds (which may
-    # be shortened, or the whole recording in full mode) for the header times.
+    # be shortened, manual, or the whole recording in full mode) for the header.
     co2 = fits["CO2"]
+    mode = "manual" if spot.manual_offset_s is not None else fit_mode
     return SpotDetail(
         nr=spot.nr,
         gps=spot.gps,
@@ -349,13 +350,102 @@ def get_spot_detail(
             start=_shift_hhmmss(spot.start_time, int(co2.fit_start_s)),
             stop=_shift_hhmmss(spot.start_time, int(co2.fit_stop_s)),
         ),
-        mode=fit_mode,
+        mode=mode,
         fit_offset_s=co2.fit_offset_s,
         fit_window_s=co2.fit_window_s,
         window_shortened=co2.window_shortened,
+        manual_offset_s=spot.manual_offset_s,
         flags=_spot_flags(fits, no_pressure=readings[0].pressure_used is None),
         gases=gases,
     )
+
+
+@router.get("/analyses/{analysis_id}/spots/{nr}", response_model=SpotDetail | None)
+def get_spot_detail(
+    analysis_id: str,
+    nr: int,
+    fit_mode: str = "auto",
+    session: Session = Depends(get_session),
+) -> SpotDetail | None:
+    """Per-spot detail. ``fit_mode=auto`` (default) uses the best/shortened window;
+    ``fit_mode=full`` fits the whole recorded window as-is (no window search); a
+    saved manual offset on the spot overrides both."""
+    _check_fit_mode(fit_mode)
+    analysis = _get_analysis(session, analysis_id)
+    spot = next((s for s in analysis.spots if s.nr == nr), None)
+    if spot is None:
+        raise api_error(404, "not_found", f"Spot {nr} not found.")
+    return _build_spot_detail(analysis, spot, fit_mode)
+
+
+def _rewrite_spot_flux_results(
+    session: Session, analysis: Analysis, spot: Spot
+) -> None:
+    """Recompute this spot's fit (honouring its ``manual_offset_s``) and replace its
+    ``FluxResult`` rows, so the durable record the export reads stays in sync."""
+    for old in list(spot.flux_results):
+        session.delete(old)
+    readings = _sorted_readings(spot)
+    fits = _fit_results(analysis, readings, manual_offset_s=spot.manual_offset_s)
+    if fits is None:
+        return
+    for gas, gr in fits.items():
+        if gr.skipped or gr.fit is None or gr.ladder is None:
+            continue
+        ladder = gr.ladder
+        session.add(
+            FluxResult(
+                spot_id=spot.id,
+                gas=gas,
+                slope=gr.fit.slope,
+                r2=gr.fit.r2,
+                flux_umol_m2_s=ladder.umol_m2_s,
+                flux_umol_m2_h=ladder.umol_m2_h,
+                flux_mol_m2_h=ladder.mol_m2_h,
+                flux_gC_m2_day=ladder.gC_m2_day,
+                flux_kg_m2_h=ladder.kg_m2_h,
+                flux_kg_ha_h=ladder.kg_ha_h,
+                flux_kg_ha_day=ladder.kg_ha_day,
+                flux_kg_ha_year=ladder.kg_ha_year,
+                flux_Mg_ha_year=ladder.Mg_ha_year,
+                flux_Mg_ha_year_co2equiv=ladder.Mg_ha_year_co2equiv,
+                n_points=gr.fit.n_points,
+            )
+        )
+
+
+@router.put("/analyses/{analysis_id}/spots/{nr}/fit", response_model=SpotDetail | None)
+def set_spot_fit(
+    analysis_id: str,
+    nr: int,
+    body: SpotFitUpdate,
+    session: Session = Depends(get_session),
+) -> SpotDetail | None:
+    """Set (``offset_s``) or clear (``offset_s=null``) a spot's manual fit-window
+    offset — the per-spot correction for a mis-placed automatic window. Persists the
+    override, rewrites the spot's ``FluxResult`` (so results + export follow), logs
+    the change, and returns the recomputed detail."""
+    if body.offset_s is not None and body.offset_s < 0:
+        raise api_error(422, "bad_offset", "offset_s must be ≥ 0 or null.", "offset_s")
+    analysis = _get_analysis(session, analysis_id)
+    spot = next((s for s in analysis.spots if s.nr == nr), None)
+    if spot is None:
+        raise api_error(404, "not_found", f"Spot {nr} not found.")
+
+    spot.manual_offset_s = body.offset_s
+    session.add(spot)
+    _rewrite_spot_flux_results(session, analysis, spot)
+    message = (
+        f"Spot {nr}: fit reset to automatic window"
+        if body.offset_s is None
+        else f"Spot {nr}: manual fit window set to start +{int(body.offset_s)} s"
+    )
+    session.add(
+        ProcessingLogEntry(analysis_id=analysis_id, severity="info", message=message)
+    )
+    session.commit()
+    session.refresh(spot)
+    return _build_spot_detail(analysis, spot, "auto")
 
 
 @router.get("/analyses/{analysis_id}/timeseries", response_model=Timeseries)
@@ -375,7 +465,9 @@ def get_timeseries(
         readings = _sorted_readings(spot)
         if not readings:
             continue
-        fits = _fit_results(analysis, readings, mode=fit_mode)
+        fits = _fit_results(
+            analysis, readings, mode=fit_mode, manual_offset_s=spot.manual_offset_s
+        )
         t0 = readings[0].timestamp
         for gas in GAS_COLUMN:
             attr = _GAS_META[gas][0]

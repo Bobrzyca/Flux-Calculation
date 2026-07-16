@@ -134,8 +134,11 @@ export interface GasFit {
   n_spikes: number
 }
 
-/** How a spot's regression was fitted. */
+/** Page-level fit mode (the Results "block auto-fit" switch). */
 export type FitMode = 'auto' | 'full'
+
+/** How a single spot was actually fitted (adds the saved manual override). */
+export type SpotFitMode = FitMode | 'manual'
 
 export interface GasDetail {
   unit: string // "ppm" | "ppb"
@@ -149,14 +152,16 @@ export interface SpotDetail {
   gps: string
   light_dark: LightDark
   fit_window: { start: string; stop: string }
-  /** Which fit produced this detail: best/shortened window, or the whole recording. */
-  mode: FitMode
+  /** Which fit produced this detail: best/shortened window, whole recording, or manual. */
+  mode: SpotFitMode
   /** Seconds the fit window was shifted after the recorded start. */
   fit_offset_s: number
   /** Fit-window length in seconds (< 300 when shortened; whole span in full mode). */
   fit_window_s: number
   /** True when the window was shortened to recover a low R². */
   window_shortened: boolean
+  /** Saved manual offset for this spot (null = automatic). */
+  manual_offset_s: number | null
   flags: SpotFlag[]
   gases: Record<Gas, GasDetail>
 }

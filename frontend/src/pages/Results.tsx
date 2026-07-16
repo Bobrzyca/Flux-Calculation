@@ -50,7 +50,12 @@ export function Results() {
   // blocks automatic fitting and uses each spot's whole recording. One switch
   // drives the table, the graph, and the per-spot detail.
   const [fitMode, setFitMode] = useState<FitMode>('auto')
-  const results = useAsync(() => api.getResults(id!, fitMode), [id, fitMode])
+  // Bumped whenever a per-spot manual shift is saved, to refetch table + graph.
+  const [fitVersion, setFitVersion] = useState(0)
+  const results = useAsync(
+    () => api.getResults(id!, fitMode),
+    [id, fitMode, fitVersion],
+  )
   const analysis = useAsync(() => api.getAnalysis(id!), [id])
 
   const [query, setQuery] = useState('')
@@ -262,7 +267,12 @@ export function Results() {
       {/* Regression graph: concentration time series + fitted flux line, with
           the chosen (best) window shaded, for a selected spot. */}
       {results.data && id && navigableNrs.length > 0 && (
-        <SpotGraph analysisId={id} spotNrs={navigableNrs} fitMode={fitMode} />
+        <SpotGraph
+          analysisId={id}
+          spotNrs={navigableNrs}
+          fitMode={fitMode}
+          fitVersion={fitVersion}
+        />
       )}
 
       {/* Table / states */}
@@ -357,6 +367,7 @@ export function Results() {
           fitMode={fitMode}
           onClose={() => setOpenSpot(null)}
           onNavigate={setOpenSpot}
+          onFitChanged={() => setFitVersion((v) => v + 1)}
         />
       )}
     </div>
@@ -465,17 +476,19 @@ function SpotGraph({
   analysisId,
   spotNrs,
   fitMode,
+  fitVersion,
 }: {
   analysisId: string
   spotNrs: number[]
   fitMode: FitMode
+  fitVersion: number
 }) {
   const [mode, setMode] = useState<'single' | 'all'>('single')
   const [nr, setNr] = useState(spotNrs[0])
   const [gas, setGas] = useState<Gas>('CO2')
   const { data, loading } = useAsync(
     () => api.getTimeseries(analysisId, fitMode),
-    [analysisId, fitMode],
+    [analysisId, fitMode, fitVersion],
   )
   // If the selected spot vanished from the list (re-run), fall back to the first.
   const selected = spotNrs.includes(nr) ? nr : spotNrs[0]

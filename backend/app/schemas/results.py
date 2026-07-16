@@ -100,16 +100,30 @@ class SpotDetail(BaseModel):
     gps: str
     light_dark: str
     fit_window: FitWindow
-    # Which fit produced this detail: "auto" (best/shortened window) or "full"
-    # (the whole recorded window, no window search).
+    # Which fit produced this detail: "auto" (best/shortened window), "full" (the
+    # whole recorded window), or "manual" (a saved per-spot offset override).
     mode: str = "auto"
     # Seconds the fit window was shifted after the recorded start (best-window),
     # its length in seconds, and whether it was shortened to recover a low R².
     fit_offset_s: float = 0.0
     fit_window_s: float = 0.0
     window_shortened: bool = False
+    # The saved manual offset for this spot (None = automatic). Lets the UI show
+    # and pre-fill the current manual correction.
+    manual_offset_s: float | None = None
     flags: list[str] = Field(default_factory=list)
     gases: dict[str, GasDetail]
+
+
+class SpotFitUpdate(BaseModel):
+    """Set (or clear) a spot's manual fit-window offset.
+
+    ``offset_s`` is seconds after the spot's first reading where the fixed-length
+    fit window should start; ``None`` clears the override and restores the
+    automatic best-window selection.
+    """
+
+    offset_s: float | None
 
 
 class LogEntry(BaseModel):

@@ -31,6 +31,13 @@ shows how far the fit window shifted after the recorded start, its length, wheth
 was shortened to recover R², and the per-gas isolated-spike drop count
 (`SpotDetail.fit_offset_s/fit_window_s/window_shortened`, `GasFit.n_spikes`).
 
+**Manual per-spot shift:** `SpotDetail` has a "Manual fit window" control (−/+ nudge
++ seconds input + Apply / Reset to auto) that calls `api.setSpotFit(id, nr, offsetS)`
+(`PUT …/spots/{nr}/fit`, `offsetS=null` resets). The saved offset overrides the page
+fit mode for that spot (`SpotDetail.mode === 'manual'`, `manual_offset_s`), and the
+drawer calls `onFitChanged` so Results refetches the table + graph (a `fitVersion`
+counter in Results deps).
+
 **Deferred features keep their placeholders** end-to-end: `quality_check.available
 === false` → "quality check unavailable" (n8n, `TODO: later seminar`);
 `parse_failed` fallback on Confirm (LLM parser, `TODO: seminar 6`). Neither is built.

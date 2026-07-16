@@ -202,6 +202,7 @@ def run_match(
             analysis.chamber_volume_l,
             matched.temperature_used,
             pressure_for_flux,
+            manual_offset_s=spot.manual_offset_s,
         )
         chosen = next(iter(results.values()))
         offset, length = chosen.fit_offset_s, chosen.fit_window_s

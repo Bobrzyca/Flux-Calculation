@@ -20,11 +20,15 @@ import {
 
 let analyses: Analysis[] = []
 let notesStore = new Map<string, ParsedNotes>()
+// Saved per-spot manual fit offsets, keyed `${analysisId}:${nr}` (mirrors the
+// backend's persisted Spot.manual_offset_s).
+let manualOffsets = new Map<string, number>()
 let idCounter = 1
 
 export function resetApiMock(): void {
   analyses = SEED_ANALYSES.map((a) => ({ ...a }))
   notesStore = new Map()
+  manualOffsets = new Map()
   idCounter = 1
 }
 
@@ -88,6 +92,36 @@ function exportBlob(format: string): Response {
     status: 200,
     headers: { 'content-type': format === 'csv' ? 'text/csv' : 'text/plain' },
   })
+}
+
+/** Apply the stored manual offset (if any) or the page fit mode to a spot detail,
+ *  mirroring the backend's precedence: a saved manual offset wins over the mode. */
+function spotDetailWithOverrides(
+  detail: NonNullable<ReturnType<typeof buildSpotDetail>>,
+  id: string,
+  nr: number,
+  mode: 'auto' | 'full',
+) {
+  const manual = manualOffsets.get(`${id}:${nr}`)
+  if (manual !== undefined) {
+    return {
+      ...detail,
+      mode: 'manual' as const,
+      fit_offset_s: manual,
+      manual_offset_s: manual,
+    }
+  }
+  if (mode === 'full') {
+    return {
+      ...detail,
+      mode: 'full' as const,
+      fit_offset_s: 0,
+      fit_window_s: 600,
+      window_shortened: false,
+      manual_offset_s: null,
+    }
+  }
+  return { ...detail, manual_offset_s: null }
 }
 
 async function handle(
@@ -180,20 +214,27 @@ async function handle(
   const resultsMatch = path.match(/^\/analyses\/([^/]+)\/results$/)
   if (resultsMatch) return json(buildResults())
 
+  const fitMatch = path.match(/^\/analyses\/([^/]+)\/spots\/(\d+)\/fit$/)
+  if (fitMatch && method === 'PUT') {
+    const [, id, nrStr] = fitMatch
+    const detail = buildSpotDetail(Number(nrStr))
+    if (!detail) return json(null)
+    const { offset_s } = JSON.parse(String(init?.body ?? '{}')) as {
+      offset_s: number | null
+    }
+    const key = `${id}:${nrStr}`
+    if (offset_s === null) manualOffsets.delete(key)
+    else manualOffsets.set(key, offset_s)
+    return json(spotDetailWithOverrides(detail, id, Number(nrStr), 'auto'))
+  }
+
   const spotMatch = path.match(/^\/analyses\/([^/]+)\/spots\/(\d+)$/)
   if (spotMatch) {
-    const detail = buildSpotDetail(Number(spotMatch[2]))
-    if (detail && url.searchParams.get('fit_mode') === 'full') {
-      // Whole-recording mode: no window search, fit the full span from t0.
-      return json({
-        ...detail,
-        mode: 'full' as const,
-        fit_offset_s: 0,
-        fit_window_s: 600,
-        window_shortened: false,
-      })
-    }
-    return json(detail)
+    const [, id, nrStr] = spotMatch
+    const detail = buildSpotDetail(Number(nrStr))
+    if (!detail) return json(detail)
+    const mode = url.searchParams.get('fit_mode') === 'full' ? 'full' : 'auto'
+    return json(spotDetailWithOverrides(detail, id, Number(nrStr), mode))
   }
 
   const tsMatch = path.match(/^\/analyses\/([^/]+)\/timeseries$/)

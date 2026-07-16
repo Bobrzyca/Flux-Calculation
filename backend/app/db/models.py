@@ -62,6 +62,9 @@ class Spot(SQLModel, table=True):
     location_desc: str = ""
     start_time: str  # "HH:MM:SS"
     stop_time: str  # "HH:MM:SS"
+    # Manual fit-window override: seconds after the spot's first reading where the
+    # fit window should start. None = use the automatic best-window selection.
+    manual_offset_s: float | None = Field(default=None)
 
     analysis: Analysis | None = Relationship(back_populates="spots")
     readings: list["Reading"] = Relationship(back_populates="spot")  # noqa: UP037

@@ -187,13 +187,17 @@ def fit_spot(
     temp_c: float,
     pressure_hpa: float,
     mode: str = "auto",
+    manual_offset_s: float | None = None,
 ) -> dict[str, GasResult]:
     """Fit both gases for a spot.
 
     ``mode="auto"`` (default) despikes, then fits over the best (most-linear,
     possibly shortened) window. ``mode="full"`` despikes, then fits the **whole
     recorded window** as-is (no window search) — the "use the file's series without
-    fitting" option. ``readings`` needs ``timestamp``, ``co2_ppm`` and ``ch4_ppb``.
+    fitting" option. When ``manual_offset_s`` is given it **overrides** both: the
+    fit uses a fixed ``FIT_WINDOW_SECONDS`` window starting that many seconds after
+    the spot's first reading (the manual per-spot correction). ``readings`` needs
+    ``timestamp``, ``co2_ppm`` and ``ch4_ppb``.
     """
     if readings.empty:
         return {
@@ -223,8 +227,13 @@ def fit_spot(
     rel = work["timestamp"].astype(float) - t0
     span = float(rel.max())
 
-    # 2) Choose the window.
-    if mode == "full":
+    # 2) Choose the window. A manual offset wins over auto/full; otherwise the
+    #    page mode decides (whole recording vs the best/shortened window).
+    if manual_offset_s is not None:
+        offset, win = float(manual_offset_s), float(C.FIT_WINDOW_SECONDS)
+        shortened = False
+        lo, hi = offset, offset + win
+    elif mode == "full":
         offset, win, shortened = 0.0, span, False
         lo, hi = 0.0, span + 1.0  # include the last sample
     else:

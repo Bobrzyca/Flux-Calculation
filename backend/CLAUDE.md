@@ -114,8 +114,16 @@ All four must be **green before every commit** (root rule 2). Write or update a
   flux ladder) plus the fit meta `mode`, `fit_offset_s`, `fit_window_s`,
   `window_shortened`. **`fit_mode`** (default `auto`) selects the best/shortened
   window; **`full`** fits the whole recorded window as-is (no window search) — the
-  "use the file's time series without fitting" view. `null` for a skipped spot, 404
-  if the spot doesn't exist, 422 (`bad_fit_mode`) on an unknown `fit_mode`.
+  "use the file's time series without fitting" view. A saved manual offset on the
+  spot overrides both (`mode="manual"`). `null` for a skipped spot, 404 if the spot
+  doesn't exist, 422 (`bad_fit_mode`) on an unknown `fit_mode`.
+- `PUT /api/analyses/{id}/spots/{nr}/fit` (body `SpotFitUpdate` = `{offset_s: float
+  | null}`) — set (or clear with `null`) a spot's **manual fit-window offset**: the
+  per-spot correction for a mis-placed automatic window. Persists
+  `Spot.manual_offset_s`, **rewrites that spot's `FluxResult`** so the results table
+  and export follow, logs the change, and returns the recomputed `SpotDetail`. 422
+  (`bad_offset`) if `offset_s` < 0, 404 if the spot doesn't exist. Manual offsets
+  survive a re-`match` (the match step honours them).
 - `GET /api/analyses/{id}/log` → the `ProcessingLogEntry` rows in order.
 - Read endpoints recompute per-spot fits from the persisted `Reading` rows via the
   same `fit_spot` pipeline (one code path); `FluxResult` stays the durable record
@@ -203,6 +211,11 @@ fits the entire recorded span as-is (despiking still applies) — surfaced via t
 `fit_mode=full` query param on the **results, timeseries, and spot-detail**
 endpoints (the frontend Results page drives all three from one "Block auto-fit"
 switch).
+**Manual per-spot offset:** `fit_spot(..., manual_offset_s=…)` uses a fixed
+`FIT_WINDOW_SECONDS` window starting at that offset and **overrides** auto/full —
+the saved per-spot correction (`Spot.manual_offset_s`) for a window the auto-fit
+placed wrong. Set/cleared via `PUT …/spots/{nr}/fit`, which rewrites the spot's
+`FluxResult` so results + export follow.
 **Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`.
 `reference/flux_reference.R` exists but is a **Python-derived scaffold** (so it can't
 independently validate yet) — `# TODO: re-validate` once the real, independent R
@@ -235,7 +248,11 @@ Columns mirror `project-brief.md` → "Data stored by the application" (with an 
   time_offset_seconds, status, created_at)` — `status` is
   `draft | needs_review | complete`.
 - **`Spot`** `(id, analysis_id, nr, gps, light_dark, location_desc, start_time,
-  stop_time)` — `start_time`/`stop_time` are `HH:MM:SS` strings.
+  stop_time, manual_offset_s)` — `start_time`/`stop_time` are `HH:MM:SS` strings;
+  `manual_offset_s` (nullable) is the saved manual fit-window override (None =
+  automatic). Added after initial release, so `create_db_and_tables` runs a tiny
+  idempotent `ADD COLUMN` migration (`session.py:_run_lightweight_migrations`) for
+  DBs created before it existed.
 - **`Reading`** `(id, spot_id, timestamp, co2_ppm, ch4_ppb, temperature_used,
   pressure_used)` — concentrations are nullable (`nan` rows stored as null).
 - **`FluxResult`** `(id, spot_id, gas, slope, r2, flux_umol_m2_s, flux_umol_m2_h,

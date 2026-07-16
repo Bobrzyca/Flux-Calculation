@@ -108,6 +108,17 @@ def test_short_window_flag_under_4_minutes() -> None:
     assert SHORT_WINDOW in res["CO2"].flags
 
 
+def test_manual_offset_overrides_window_selection() -> None:
+    df = _stream(360)
+    res = fit_spot(df, AREA, VOLUME, TEMP, PRESSURE, manual_offset_s=90)
+    co2 = res["CO2"]
+    assert co2.fit_offset_s == 90.0
+    assert co2.fit_start_s == 90.0
+    assert co2.fit_stop_s == 390.0  # fixed 5-min window from the manual start
+    assert not co2.window_shortened
+    assert co2.fit is not None and abs(co2.fit.slope - 0.03) < 1e-6
+
+
 # --- Despike (isolated single-point spikes) --------------------------------
 
 
