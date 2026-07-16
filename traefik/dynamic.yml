@@ -30,6 +30,28 @@ http:
       service: flux-frontend
       tls:
         certResolver: letsencrypt
+    # n8n under a subpath on the same host. priority 100 so /n8n beats the
+    # frontend catch-all above. IMPORTANT: the /n8n prefix IS stripped before
+    # forwarding — n8n (v2.x) serves its editor, /rest API, /static and /assets
+    # at the ROOT and only *writes* the /n8n/ prefix into generated URLs (via
+    # N8N_PATH=/n8n/). So the proxy must strip /n8n or every asset/API call
+    # returns the SPA HTML and the editor can't reach its own API.
+    n8n:
+      rule: "Host(`flux-calculation.aibr.cz`) && PathPrefix(`/n8n`)"
+      entryPoints:
+        - websecure
+      service: n8n
+      priority: 100
+      middlewares:
+        - n8n-stripprefix
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    n8n-stripprefix:
+      stripPrefix:
+        prefixes:
+          - "/n8n"
 
   services:
     flux-backend:
@@ -40,3 +62,7 @@ http:
       loadBalancer:
         servers:
           - url: "http://frontend:80"
+    n8n:
+      loadBalancer:
+        servers:
+          - url: "http://n8n:5678"

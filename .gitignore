@@ -8,3 +8,5 @@
 input_data/
 HTTPS
 *.bak
+*.bak-*
+*.bak.*
