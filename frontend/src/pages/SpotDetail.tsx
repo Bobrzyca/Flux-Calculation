@@ -26,6 +26,8 @@ interface SpotDetailProps {
   nr: number
   /** Ordered list of navigable (non-skipped) spot numbers. */
   spotNrs: number[]
+  /** Global fit mode from Results — "full" blocks the automatic best-window fit. */
+  fitMode: FitMode
   onClose: () => void
   onNavigate: (nr: number) => void
 }
@@ -34,10 +36,10 @@ export function SpotDetail({
   analysisId,
   nr,
   spotNrs,
+  fitMode,
   onClose,
   onNavigate,
 }: SpotDetailProps) {
-  const [fitMode, setFitMode] = useState<FitMode>('auto')
   const { data, loading, error, reload } = useAsync(
     () => api.getSpotDetail(analysisId, nr, fitMode),
     [analysisId, nr, fitMode],
@@ -102,29 +104,6 @@ export function SpotDetail({
 
       {data && (
         <div className="flex flex-col gap-5">
-          {/* Fit mode: the best (auto) window vs the whole recorded window. */}
-          <div
-            role="tablist"
-            aria-label="Fit mode"
-            className="inline-flex self-start rounded-lg border border-border p-1"
-          >
-            {(['auto', 'full'] as FitMode[]).map((m) => (
-              <button
-                key={m}
-                role="tab"
-                aria-selected={fitMode === m}
-                onClick={() => setFitMode(m)}
-                className={
-                  fitMode === m
-                    ? 'rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-white'
-                    : 'rounded-md px-4 py-1.5 text-sm font-medium text-muted hover:text-text'
-                }
-              >
-                {m === 'auto' ? 'Auto window' : 'Whole recording'}
-              </button>
-            ))}
-          </div>
-
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <LightDarkTag value={data.light_dark} />
             <span>GPS {data.gps || '—'}</span>

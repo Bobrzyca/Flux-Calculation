@@ -55,6 +55,14 @@ def _get_analysis(session: Session, analysis_id: str) -> Analysis:
     return analysis
 
 
+def _check_fit_mode(fit_mode: str) -> str:
+    """Validate the shared ``fit_mode`` query param (auto = best window; full =
+    whole recording, no window search)."""
+    if fit_mode not in ("auto", "full"):
+        raise api_error(422, "bad_fit_mode", "fit_mode must be 'auto' or 'full'.")
+    return fit_mode
+
+
 def _sorted_readings(spot: Spot) -> list[Reading]:
     return sorted(spot.readings, key=lambda r: r.timestamp)
 
@@ -138,8 +146,13 @@ def _fit_results(
 
 @router.get("/analyses/{analysis_id}/results", response_model=ResultsPayload)
 def get_results(
-    analysis_id: str, session: Session = Depends(get_session)
+    analysis_id: str,
+    fit_mode: str = "auto",
+    session: Session = Depends(get_session),
 ) -> ResultsPayload:
+    """Per-spot results table. ``fit_mode=full`` blocks automatic window fitting and
+    computes every spot's flux over its whole recorded window."""
+    _check_fit_mode(fit_mode)
     analysis = _get_analysis(session, analysis_id)
     offset = analysis.time_offset_seconds
     date = str(analysis.work_date)
@@ -182,7 +195,7 @@ def get_results(
         # What pressure the flux actually used: the stored value, or the default
         # when none was supplied (pressure is optional).
         pressure = C.DEFAULT_PRESSURE_HPA if no_pressure else readings[0].pressure_used
-        fits = _fit_results(analysis, readings)
+        fits = _fit_results(analysis, readings, mode=fit_mode)
         if fits is None:
             # Readings exist but temperature missing -> flux not computed.
             spots.append(
@@ -312,8 +325,7 @@ def get_spot_detail(
 ) -> SpotDetail | None:
     """Per-spot detail. ``fit_mode=auto`` (default) uses the best/shortened window;
     ``fit_mode=full`` fits the whole recorded window as-is (no window search)."""
-    if fit_mode not in ("auto", "full"):
-        raise api_error(422, "bad_fit_mode", "fit_mode must be 'auto' or 'full'.")
+    _check_fit_mode(fit_mode)
     analysis = _get_analysis(session, analysis_id)
     spot = next((s for s in analysis.spots if s.nr == nr), None)
     if spot is None:
@@ -348,18 +360,22 @@ def get_spot_detail(
 
 @router.get("/analyses/{analysis_id}/timeseries", response_model=Timeseries)
 def get_timeseries(
-    analysis_id: str, session: Session = Depends(get_session)
+    analysis_id: str,
+    fit_mode: str = "auto",
+    session: Session = Depends(get_session),
 ) -> Timeseries:
     """All computed spots' concentration points on the real (absolute) time axis,
     with each spot's fitted flux-line endpoints — for the campaign overview graph.
+    ``fit_mode=full`` blocks automatic window fitting (whole-recording fit).
     """
+    _check_fit_mode(fit_mode)
     analysis = _get_analysis(session, analysis_id)
     gas_spots: dict[str, list[TSSpot]] = {"CO2": [], "CH4": []}
     for spot in sorted(analysis.spots, key=lambda s: s.nr):
         readings = _sorted_readings(spot)
         if not readings:
             continue
-        fits = _fit_results(analysis, readings)
+        fits = _fit_results(analysis, readings, mode=fit_mode)
         t0 = readings[0].timestamp
         for gas in GAS_COLUMN:
             attr = _GAS_META[gas][0]

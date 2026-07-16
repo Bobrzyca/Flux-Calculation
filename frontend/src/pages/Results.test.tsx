@@ -36,4 +36,23 @@ describe('Results screen', () => {
       within(table).getAllByText('52.3042, 20.7938').length,
     ).toBeGreaterThan(0)
   })
+
+  it('blocks automatic fitting for all spots via the global toggle', async () => {
+    renderWithProviders(<App />, { route: ROUTE })
+    await screen.findByText('Quality check')
+
+    // Off by default — no whole-recording banner.
+    expect(
+      screen.queryByText('Automatic fitting is off'),
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByLabelText(
+        'Block automatic time fitting (use whole recording)',
+      ),
+    )
+    expect(
+      await screen.findByText('Automatic fitting is off'),
+    ).toBeInTheDocument()
+  })
 })

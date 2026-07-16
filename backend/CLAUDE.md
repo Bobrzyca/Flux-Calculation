@@ -102,9 +102,12 @@ All four must be **green before every commit** (root rule 2). Write or update a
   from the concentration file's own `DATE`, not the form's `work_date`** (a wrong
   hand-typed date would otherwise put every window on the wrong day → all empty);
   the analysis's `work_date` is corrected to the data's date.
-- `GET /api/analyses/{id}/results` → `ResultsPayload` (per-spot table; flags
+- `GET /api/analyses/{id}/results?fit_mode=auto|full` → `ResultsPayload`
+  (per-spot table; flags
   `low_r2`/`short_window`/`dropped_nan`/`no_pressure`; skipped spots carry a
-  `skip_reason`). `quality_check.available` is **false** with a pending message —
+  `skip_reason`). **`fit_mode`** (default `auto`; `full` blocks automatic window
+  fitting → whole-recording flux for every spot; 422 `bad_fit_mode` otherwise).
+  `quality_check.available` is **false** with a pending message —
   n8n is deferred (`# TODO: n8n quality check`).
 - `GET /api/analyses/{id}/spots/{nr}?fit_mode=auto|full` → `SpotDetail` (per-gas
   points with `in_window`, fit incl. `n_dropped_nan` + `n_spikes`, `fit_window`,
@@ -197,7 +200,9 @@ gaps) and logged. `parse_li7810` also drops CO₂ ≥ `MAX_VALID_CO2_PPM` (1500 
 sensor spikes, matching the R method.
 **Whole-recording mode:** `fit_spot(..., mode="full")` skips the window search and
 fits the entire recorded span as-is (despiking still applies) — surfaced via the
-`fit_mode=full` query param on the spot-detail endpoint.
+`fit_mode=full` query param on the **results, timeseries, and spot-detail**
+endpoints (the frontend Results page drives all three from one "Block auto-fit"
+switch).
 **Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`.
 `reference/flux_reference.R` exists but is a **Python-derived scaffold** (so it can't
 independently validate yet) — `# TODO: re-validate` once the real, independent R

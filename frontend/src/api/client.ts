@@ -146,9 +146,13 @@ export const api = {
     await request(`/analyses/${id}/match`, { method: 'POST' })
   },
 
-  /** GET /analyses/{id}/results */
-  getResults(id: string): Promise<ResultsPayload> {
-    return getJson<ResultsPayload>(`/analyses/${id}/results`)
+  /**
+   * GET /analyses/{id}/results.
+   * `fitMode` "full" blocks automatic window fitting (whole-recording flux).
+   */
+  getResults(id: string, fitMode: FitMode = 'auto'): Promise<ResultsPayload> {
+    const query = fitMode === 'auto' ? '' : `?fit_mode=${fitMode}`
+    return getJson<ResultsPayload>(`/analyses/${id}/results${query}`)
   },
 
   /**
@@ -172,9 +176,13 @@ export const api = {
     return getJson<LogEntry[]>(`/analyses/${id}/log`)
   },
 
-  /** GET /analyses/{id}/timeseries — all spots' points on the absolute time axis. */
-  getTimeseries(id: string): Promise<Timeseries> {
-    return getJson<Timeseries>(`/analyses/${id}/timeseries`)
+  /**
+   * GET /analyses/{id}/timeseries — all spots' points on the absolute time axis.
+   * `fitMode` "full" blocks automatic window fitting (whole-recording fit).
+   */
+  getTimeseries(id: string, fitMode: FitMode = 'auto'): Promise<Timeseries> {
+    const query = fitMode === 'auto' ? '' : `?fit_mode=${fitMode}`
+    return getJson<Timeseries>(`/analyses/${id}/timeseries${query}`)
   },
 
   /** GET /analyses/{id}/export?format=xlsx|txt|csv — the file blob. */

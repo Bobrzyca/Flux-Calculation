@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
-import type { ExportFormat, Gas, SpotResult } from '@/api/types'
+import type { ExportFormat, FitMode, Gas, SpotResult } from '@/api/types'
 import { useAsync } from '@/hooks/useAsync'
 import {
   Stepper,
@@ -46,7 +46,11 @@ export function Results() {
   const navigate = useNavigate()
   const toast = useToast()
 
-  const results = useAsync(() => api.getResults(id!), [id])
+  // Global fit mode: "auto" lets the app pick the best window per spot; "full"
+  // blocks automatic fitting and uses each spot's whole recording. One switch
+  // drives the table, the graph, and the per-spot detail.
+  const [fitMode, setFitMode] = useState<FitMode>('auto')
+  const results = useAsync(() => api.getResults(id!, fitMode), [id, fitMode])
   const analysis = useAsync(() => api.getAnalysis(id!), [id])
 
   const [query, setQuery] = useState('')
@@ -200,6 +204,19 @@ export function Results() {
           Flagged only
         </label>
 
+        <Tooltip content="Turn off the automatic best-window selection and compute every spot's flux over its whole recording as-is.">
+          <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm text-text">
+            <input
+              type="checkbox"
+              aria-label="Block automatic time fitting (use whole recording)"
+              checked={fitMode === 'full'}
+              onChange={(e) => setFitMode(e.target.checked ? 'full' : 'auto')}
+              className="h-4 w-4 accent-[var(--primary)]"
+            />
+            Block auto-fit (whole recording)
+          </label>
+        </Tooltip>
+
         <div className="ml-auto flex items-center gap-2">
           <select
             aria-label="Sort by"
@@ -234,10 +251,18 @@ export function Results() {
         </div>
       </div>
 
+      {fitMode === 'full' && (
+        <Banner tone="info" title="Automatic fitting is off">
+          Every spot's flux below is computed over its{' '}
+          <strong>whole recording</strong> as-is — the automatic best-window
+          selection is blocked. Untick "Block auto-fit" to restore it.
+        </Banner>
+      )}
+
       {/* Regression graph: concentration time series + fitted flux line, with
           the chosen (best) window shaded, for a selected spot. */}
       {results.data && id && navigableNrs.length > 0 && (
-        <SpotGraph analysisId={id} spotNrs={navigableNrs} />
+        <SpotGraph analysisId={id} spotNrs={navigableNrs} fitMode={fitMode} />
       )}
 
       {/* Table / states */}
@@ -329,6 +354,7 @@ export function Results() {
           analysisId={id}
           nr={openSpot}
           spotNrs={navigableNrs}
+          fitMode={fitMode}
           onClose={() => setOpenSpot(null)}
           onNavigate={setOpenSpot}
         />
@@ -438,16 +464,18 @@ function ResultRow({ s, onOpen }: { s: SpotResult; onOpen: () => void }) {
 function SpotGraph({
   analysisId,
   spotNrs,
+  fitMode,
 }: {
   analysisId: string
   spotNrs: number[]
+  fitMode: FitMode
 }) {
   const [mode, setMode] = useState<'single' | 'all'>('single')
   const [nr, setNr] = useState(spotNrs[0])
   const [gas, setGas] = useState<Gas>('CO2')
   const { data, loading } = useAsync(
-    () => api.getTimeseries(analysisId),
-    [analysisId],
+    () => api.getTimeseries(analysisId, fitMode),
+    [analysisId, fitMode],
   )
   // If the selected spot vanished from the list (re-run), fall back to the first.
   const selected = spotNrs.includes(nr) ? nr : spotNrs[0]

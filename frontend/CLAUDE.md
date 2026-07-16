@@ -22,10 +22,13 @@ the right field (409 duplicate name, 422 missing-file / bad-LI-7810).
 Run the backend (`uvicorn app.main:app --reload` in `backend/`) alongside
 `npm run dev`; keep the backend's `CORS_ORIGINS` in sync with the dev origin.
 
-**Per-spot fit view:** `SpotDetail` has an **Auto window / Whole recording** toggle
-(`api.getSpotDetail(id, nr, fitMode)`, `fitMode: 'auto' | 'full'` → `?fit_mode=`).
-It shows how far the fit window shifted after the recorded start, its length,
-whether it was shortened to recover R², and the per-gas isolated-spike drop count
+**Fit mode (one global switch):** the Results page has a **"Block auto-fit (whole
+recording)"** checkbox. It holds one `fitMode: 'auto' | 'full'` and threads it to
+`api.getResults`, `api.getTimeseries`, and `SpotDetail` (as a prop) — so the table,
+the graph, and the detail drawer all recompute together (`?fit_mode=full` blocks the
+automatic best-window selection and fits each spot's whole recording). `SpotDetail`
+shows how far the fit window shifted after the recorded start, its length, whether it
+was shortened to recover R², and the per-gas isolated-spike drop count
 (`SpotDetail.fit_offset_s/fit_window_s/window_shortened`, `GasFit.n_spikes`).
 
 **Deferred features keep their placeholders** end-to-end: `quality_check.available

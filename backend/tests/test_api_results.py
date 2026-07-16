@@ -118,6 +118,33 @@ def test_read_endpoints_404(client: TestClient) -> None:
     assert client.get(f"/api/analyses/{analysis_id}/spots/999").status_code == 404
 
 
+def test_results_full_mode_uses_whole_recording(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    auto = client.get(f"/api/analyses/{analysis_id}/results").json()
+    full = client.get(f"/api/analyses/{analysis_id}/results?fit_mode=full").json()
+    auto_by_nr = {s["nr"]: s for s in auto["spots"]}
+    full_by_nr = {s["nr"]: s for s in full["spots"]}
+    # Spot 1 in full mode fits the whole recording -> at least as many CO₂ points.
+    assert full_by_nr[1]["n_points_co2"] >= auto_by_nr[1]["n_points_co2"]
+    assert full_by_nr[1]["fit_offset_s"] == 0.0
+
+
+def test_results_bad_fit_mode_422(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.get(f"/api/analyses/{analysis_id}/results?fit_mode=nope")
+    assert resp.status_code == 422
+
+
+def test_timeseries_full_mode(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.get(f"/api/analyses/{analysis_id}/timeseries?fit_mode=full")
+    assert resp.status_code == 200
+    assert (
+        client.get(f"/api/analyses/{analysis_id}/timeseries?fit_mode=nope").status_code
+        == 422
+    )
+
+
 def test_timeseries_endpoint(client: TestClient) -> None:
     analysis_id = _create_and_match(client)
     resp = client.get(f"/api/analyses/{analysis_id}/timeseries")
