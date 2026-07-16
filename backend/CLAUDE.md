@@ -144,7 +144,8 @@ upload → parse notes (LLM, seminar 6) → confirm (human edits) → match by t
 ```
 main.py       FastAPI entry + route wiring; /api/health lives here for now
 api/          routers (one module per resource area)
-core/         config/settings (config.py), chamber-constant defaults
+core/         config/settings (config.py), logging (logging.py + middleware.py),
+              monitoring (monitoring.py — Sentry), chamber-constant defaults
 parsing/      LI-7810, temperature, notes, pressure loaders (pure)
 llm/          notes/pressure parser — prompt + schema + validation (TODO: seminar 6)
 matching/     time-shift + auto-match by timestamp (pure)
@@ -277,6 +278,17 @@ Relationships: `Analysis` → many `Spot` and `ProcessingLogEntry`; `Spot` → m
    prefix.
 6. **Green up:** `pytest`, `ruff check . && ruff format --check .`, `mypy .`.
 7. **Update the docs in the same commit** (see the update rule below).
+
+## Observability (logging + monitoring)
+Structured JSON logging (`core/logging.py`) with a per-request correlation id
+(`X-Request-ID`, `core/middleware.py`) and secret redaction; levels via
+`LOG_LEVEL`. **Error/performance monitoring is optional Sentry** (`core/monitoring.py`,
+`sentry-sdk[fastapi]`): **off unless `SENTRY_DSN` is set** — the app must always
+start/run without it. When on, it auto-captures unhandled exceptions (→5xx),
+stamps the same `request_id` on every event (so an issue links to the logs), and
+redacts sensitive values with the logger's key list. Env: `SENTRY_DSN`,
+`SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (git SHA), `SENTRY_TRACES_SAMPLE_RATE`. See
+`../docs/operations.md` (logging) and `../report.md` (monitoring, alert rules).
 
 ## Deferred features (the app must run fully without either)
 - **LLM field-notes/pressure parser** (`app/llm/`) — **TODO: seminar 6.** Until then

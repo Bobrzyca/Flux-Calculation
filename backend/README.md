@@ -21,3 +21,10 @@ pytest
 ruff check . && ruff format --check .
 mypy .
 ```
+
+## Logging
+
+Structured JSON logging (levels via `LOG_LEVEL`, format via `LOG_FORMAT`, slow-request
+threshold via `SLOW_REQUEST_MS`), a per-request correlation id (`X-Request-ID`), and
+secret redaction. See [`../docs/operations.md`](../docs/operations.md) for the full
+reference (env vars, log shape, and troubleshooting).

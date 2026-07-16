@@ -69,6 +69,19 @@ npm run typecheck      # tsc -b --noEmit
 ```
 Lint, format, type-check, and tests must be **green before every commit**.
 
+## Observability (logging + monitoring)
+Structured, level-gated logging (`src/lib/logger.ts`, `VITE_LOG_LEVEL`) with
+redaction; the API client threads an `X-Request-ID` per call that matches the
+backend logs. **Error/performance monitoring is optional Sentry**
+(`src/lib/monitoring.ts`, `@sentry/react`): **off unless `VITE_SENTRY_DSN` is set**.
+When on, it captures uncaught errors + unhandled rejections (`Sentry.ErrorBoundary`
+in `main.tsx`), tags the current `route` (`App.tsx`), adds an API breadcrumb per
+request carrying the same `requestId` (link to backend), and redacts sensitive
+values with the logger's key list before send. Source maps upload at build only
+when `SENTRY_AUTH_TOKEN` is set and are never served publicly. Env (build-time):
+`VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`,
+`VITE_SENTRY_TRACES_SAMPLE_RATE`. See `../report.md` for details + alert rules.
+
 ## Layout (`src/`)
 ```
 api/          typed fetch client (client.ts) + types (the backend seam)

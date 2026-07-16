@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { api, ApiError } from './client'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { api, ApiError, REQUEST_ID_HEADER } from './client'
 import type { CreateAnalysisInput } from './types'
 
 function makeInput(overrides: Partial<CreateAnalysisInput> = {}) {
@@ -96,5 +96,33 @@ describe('api.exportResults', () => {
     const blob = await api.exportResults('an_kampinos_0702', 'csv')
     const text = await blob.text()
     expect(text.split('\n')[0]).toContain(',')
+  })
+})
+
+describe('correlation id', () => {
+  function lastRequestId(): string | null {
+    const mock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    const init = mock.mock.calls.at(-1)![1] as RequestInit
+    return new Headers(init.headers).get(REQUEST_ID_HEADER)
+  }
+
+  it('attaches an X-Request-ID header to every request', async () => {
+    await api.listAnalyses()
+    const id = lastRequestId()
+    expect(id).toBeTruthy()
+    expect(id!.length).toBeGreaterThan(8)
+  })
+
+  it('uses a fresh id per request', async () => {
+    await api.listAnalyses()
+    const first = lastRequestId()
+    await api.listAnalyses()
+    const second = lastRequestId()
+    expect(first).not.toBe(second)
+  })
+
+  it('sets the header on the direct-fetch getSpotDetail path too', async () => {
+    await api.getSpotDetail('an_kampinos_0702', 1)
+    expect(lastRequestId()).toBeTruthy()
   })
 })

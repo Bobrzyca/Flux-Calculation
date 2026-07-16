@@ -183,6 +183,15 @@ automatically). Validate config without starting: `docker compose config`. DNS f
 `kulis.aibr.cz` must point at this host before the first request, or ACME issuance
 (HTTP-01) will fail.
 
+**Observability:** structured JSON logging + optional **Sentry** monitoring are
+wired into both apps but **stay off until DSNs are set** (`SENTRY_DSN` /
+`VITE_SENTRY_DSN` in `.env`), so the default deploy is unchanged. `SENTRY_RELEASE`
+is the git SHA, supplied at deploy time
+(`export SENTRY_RELEASE=$(git rev-parse HEAD)` before `--build`). Frontend source
+maps upload only when `SENTRY_AUTH_TOKEN` is set and are never served publicly.
+Uptime is watched by a separate, localhost-only **Uptime Kuma** (`/root/uptime-kuma`).
+See `docs/operations.md` (logging) and `report.md` (monitoring + alert rules).
+
 ## Definition of done
 A change is done when: the relevant tests pass, lint/format/type-check are clean, the
 app runs, and this `CLAUDE.md` is updated if the workflow or commands changed.

@@ -17,11 +17,26 @@
 #
 # Config comes from a project-root .env file (copy .env.example -> .env).
 # Nothing here is started automatically — run `docker compose up -d --build`.
+#
+# Logging: every service uses the json-file driver with rotation (10 MB × 3
+# files ≈ 30 MB max per container) so container logs can't fill the 75 GB disk.
+# The app itself logs structured JSON to stdout (LOG_FORMAT=json), which Docker
+# captures; inspect with `docker compose logs -f <service>` or ship the files at
+# /var/lib/docker/containers/*/*-json.log. Applying a change to this block needs
+# a container recreate (`docker compose up -d`) — it does not affect a live one.
+
+# Shared log-rotation policy, referenced by each service below via `*default-logging`.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   traefik:
     image: traefik:v3.5
     restart: always
+    logging: *default-logging
     command:
       # --- Providers ---------------------------------------------------------
       # We use the file provider (./traefik/dynamic.yml), NOT the Docker
@@ -61,10 +76,18 @@ services:
     build:
       context: ./backend
     restart: always
-    # The backend reads all of its settings (APP_NAME, DATA_DIR, DATABASE_URL,
-    # CORS_ORIGINS, LLM_API_KEY) from the project .env via pydantic-settings.
+    logging: *default-logging
+    # The backend reads most of its settings (APP_NAME, DATA_DIR, DATABASE_URL,
+    # CORS_ORIGINS, LLM_API_KEY, SENTRY_DSN, SENTRY_ENVIRONMENT,
+    # SENTRY_TRACES_SAMPLE_RATE) from the project .env via pydantic-settings.
     env_file:
       - .env
+    environment:
+      # Release = the git commit SHA, supplied at deploy time so it always
+      # matches the running code:  export SENTRY_RELEASE=$(git rev-parse HEAD)
+      # This overrides any stale value in .env. Empty is fine (monitoring still
+      # works, just without a release tag).
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
     volumes:
       # Persist uploaded files + the SQLite DB across container rebuilds.
       - backend-data:/app/data
@@ -83,7 +106,22 @@ services:
         # Baked into the bundle at build time. Default "/api" is relative, so
         # the browser hits kulis.aibr.cz/api, which Traefik routes to backend.
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        # Sentry (browser). The DSN is NOT secret — it ships in the bundle. All
+        # are baked at build time (Vite inlines VITE_* at build). Monitoring is
+        # off if VITE_SENTRY_DSN is empty.
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-production}
+        VITE_SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0}
+        # Source-map upload creds (SECRET auth token). Only used during build;
+        # when SENTRY_AUTH_TOKEN is empty, no maps are emitted or uploaded.
+        # NOTE: passed as a build arg it lands in image history — see report.md
+        # "residual risks" for the mitigation.
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
     restart: always
+    logging: *default-logging
     depends_on:
       - backend
     # No host port mapping — reachable only through Traefik.

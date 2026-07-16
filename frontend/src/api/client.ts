@@ -23,9 +23,23 @@ import type {
   SpotDetail,
   Timeseries,
 } from '@/api/types'
+import { logger } from '@/lib/logger'
+import { captureApiError, recordApiBreadcrumb } from '@/lib/monitoring'
 
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api'
+
+/** Header carrying the correlation id, echoed by the backend for log matching. */
+export const REQUEST_ID_HEADER = 'X-Request-ID'
+
+/** A short, URL-safe correlation id for one request (uuid4 hex when available). */
+function newRequestId(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') {
+    return c.randomUUID().replace(/-/g, '')
+  }
+  return `${Date.now().toString(16)}${Math.floor(Math.random() * 0xffffffff).toString(16)}`
+}
 
 /** Error the UI can branch on (missing file, bad format, duplicate name). */
 export class ApiError extends Error {
@@ -58,8 +72,58 @@ async function toApiError(res: Response): Promise<ApiError> {
   return new ApiError('http_error', `Request failed (${res.status})`)
 }
 
+/**
+ * Perform a fetch with a correlation id and structured logging.
+ *
+ * Attaches an `X-Request-ID` header (so the backend logs the same id), logs the
+ * request lifecycle (start / response / network error) with method, path,
+ * status, and duration, and returns the raw `Response` (does NOT throw on a
+ * non-OK status — callers decide, so 404 can mean "not found" rather than error).
+ */
+async function fetchWithContext(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const requestId = newRequestId()
+  const log = logger.child({ requestId })
+  const method = (init?.method ?? 'GET').toUpperCase()
+
+  const headers = new Headers(init?.headers)
+  headers.set(REQUEST_ID_HEADER, requestId)
+
+  log.debug('api.request', { method, path })
+  const start = performance.now()
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...init, headers })
+  } catch (err) {
+    const durationMs = Math.round(performance.now() - start)
+    log.error('api.network_error', {
+      method,
+      path,
+      durationMs,
+      error: String(err),
+    })
+    // Report to monitoring, tagged with the same correlation id we logged.
+    captureApiError(err, { method, path, requestId })
+    throw err
+  }
+  const durationMs = Math.round(performance.now() - start)
+  // Prefer the id the backend echoed (they should match) for correlation.
+  const correlationId = res.headers.get(REQUEST_ID_HEADER) ?? requestId
+  const fields = { method, path, status: res.status, durationMs, correlationId }
+  const level =
+    res.status >= 500 ? 'error' : res.status >= 400 ? 'warning' : 'info'
+  if (res.status >= 500) log.error('api.response', fields)
+  else if (res.status >= 400) log.warn('api.response', fields)
+  else log.info('api.response', fields)
+  // Breadcrumb so a later UI error shows the requests (and ids) that preceded it.
+  recordApiBreadcrumb({ method, path, status: res.status, requestId, level })
+  return res
+}
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${BASE_URL}${path}`, init)
+  const res = await fetchWithContext(path, init)
   if (!res.ok) throw await toApiError(res)
   return res
 }
@@ -165,7 +229,7 @@ export const api = {
     fitMode: FitMode = 'auto',
   ): Promise<SpotDetail | null> {
     const query = fitMode === 'auto' ? '' : `?fit_mode=${fitMode}`
-    const res = await fetch(`${BASE_URL}/analyses/${id}/spots/${nr}${query}`)
+    const res = await fetchWithContext(`/analyses/${id}/spots/${nr}${query}`)
     if (res.status === 404) return null
     if (!res.ok) throw await toApiError(res)
     return (await res.json()) as SpotDetail | null
