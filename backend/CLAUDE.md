@@ -216,9 +216,11 @@ noted in the log.
 **Despike:** `fit_spot` first drops **isolated single-point spikes** (`_despike_mask`
 — a lone value off both agreeing neighbours by > `DESPIKE_K` × the robust step
 scale; runs are never cut), counted per gas as `n_spikes` (separate from `nan`
-gaps) and logged. `parse_li7810` also drops out-of-range CO₂ — ≥
-`MAX_VALID_CO2_PPM` (1500 ppm, matching the R method) and < `MIN_VALID_CO2_PPM`
-(-1500 ppm, gross-negative faults / error sentinels).
+gaps) and logged. `parse_li7810` also drops (nan) **both gases on rows the
+instrument itself flags as degraded** — nonzero `DIAG` (warm-up, cavity faults;
+those rows carry garbage like CH₄ in the millions of ppb or negative CO₂) — and
+out-of-range CO₂: ≥ `MAX_VALID_CO2_PPM` (1500 ppm, matching the R method) and
+< `MIN_VALID_CO2_PPM` (-1500 ppm, gross-negative faults / error sentinels).
 **Whole-recording mode:** `fit_spot(..., mode="full")` skips the window search and
 fits the entire recorded span as-is (despiking still applies) — surfaced via the
 `fit_mode=full` query param on the **results, timeseries, and spot-detail**

@@ -93,6 +93,17 @@ def parse_li7810(path: str | Path) -> pd.DataFrame:
             "ch4_ppb": pd.to_numeric(raw[ch4], errors="coerce").astype(float),
         }
     )
+    # The instrument's own DIAG column flags degraded samples (nonzero value:
+    # warm-up, cavity pressure/temperature faults, …). Those rows carry garbage
+    # in BOTH gases (CH4 in the millions of ppb, negative CO2) that would blow
+    # up the graph axes and wreck any fit window they land in — drop them, as
+    # LI-COR's own software does. An unparsable DIAG cell keeps the reading
+    # (only a definite nonzero flag drops data).
+    if "DIAG" in by_upper:
+        diag = pd.to_numeric(raw[by_upper["DIAG"]], errors="coerce")
+        df.loc[(diag.notna() & (diag != 0)).to_numpy(), ["co2_ppm", "ch4_ppb"]] = float(
+            "nan"
+        )
     # Drop spurious CO₂ spikes (sensor errors) outside the valid range so they
     # can't distort a fit: high (≥ 1500 ppm) and gross-negative (< -1500 ppm).
     df.loc[

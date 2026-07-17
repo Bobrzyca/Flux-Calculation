@@ -96,9 +96,10 @@ _REAL_LICOR = (
     "Timezone:\tEurope/Warsaw\n"
     "DATAH\tSECONDS\tNANOSECONDS\tDIAG\tREMARK\tDATE\tTIME\tH2O\tCO2\tCH4\tCAVITY_T\n"
     "DATAU\tsecs\tnsecs\tdiag\t\tdate\ttime\tppm\tppm\tppb\tC\n"
+    # First row: warm-up, flagged by the instrument (DIAG 256) and already nan.
     "DATA\t1782976260\t0\t256\t\t2026-07-02\t09:11:00\tnan\tnan\tnan\t33.0\n"
-    "DATA\t1782976261\t0\t256\t\t2026-07-02\t09:11:01\t12000\t420.5\t1990.1\t33.0\n"
-    "DATA\t1782976262\t0\t256\t\t2026-07-02\t09:11:02\t12010\t421.0\t1991.0\t33.0\n"
+    "DATA\t1782976261\t0\t0\t\t2026-07-02\t09:11:01\t12000\t420.5\t1990.1\t33.0\n"
+    "DATA\t1782976262\t0\t0\t\t2026-07-02\t09:11:02\t12010\t421.0\t1991.0\t33.0\n"
 )
 
 
@@ -148,6 +149,31 @@ def test_high_co2_spikes_dropped(tmp_path: Path) -> None:
     assert df["co2_ppm"].isna().iloc[1]  # the 99999 spike -> nan
     assert df["co2_ppm"].iloc[0] == 420.0
     assert df["ch4_ppb"].iloc[1] == 1991.0  # CH4 untouched
+
+
+def test_diag_flagged_rows_dropped(tmp_path: Path) -> None:
+    # The LI-7810's own DIAG column flags degraded samples (nonzero). Those rows
+    # carry garbage in BOTH gases (CH4 in the millions of ppb, negative CO2), so
+    # the parser must nan them out — otherwise they wreck the graph axes and any
+    # fit window they land in.
+    f = tmp_path / "diag.txt"
+    f.write_text(
+        "Model:\tLI-7810\n"
+        "DATAH\tSECONDS\tDIAG\tCO2\tCH4\n"
+        "DATA\t1782985020\t0\t420.0\t1990.0\n"
+        "DATA\t1782985021\t4\t-350.0\t2896621.2\n"
+        "DATA\t1782985022\t112\t980.0\t1991.0\n"
+        "DATA\t1782985023\t0\t421.0\t1992.0\n",
+        encoding="utf-8",
+    )
+    df = parse_li7810(f)
+    # Flagged rows: both gases dropped (their timestamps survive).
+    assert df["co2_ppm"].isna().iloc[1] and df["ch4_ppb"].isna().iloc[1]
+    assert df["co2_ppm"].isna().iloc[2] and df["ch4_ppb"].isna().iloc[2]
+    assert df["timestamp"].notna().all() and len(df) == 4
+    # Clean rows untouched.
+    assert df["co2_ppm"].iloc[0] == 420.0
+    assert df["ch4_ppb"].iloc[3] == 1992.0
 
 
 def test_gross_negative_co2_dropped(tmp_path: Path) -> None:
