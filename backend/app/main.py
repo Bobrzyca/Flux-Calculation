@@ -7,6 +7,7 @@ are added in later chunks.
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -61,7 +62,31 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     log.info("app.shutdown")
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+try:
+    _API_VERSION = version("flux-calculation-backend")
+except PackageNotFoundError:  # running from a source tree without an install
+    _API_VERSION = "0.0.0+local"
+
+# Description shows at the top of the generated OpenAPI docs (docs/openapi.json).
+# Keep it accurate to the code: local single-user tool, all routes under /api.
+_API_DESCRIPTION = (
+    "HTTP API for the Flux Calculation tool — ingests raw closed-chamber "
+    "greenhouse-gas field files, matches them by timestamp, fits a per-spot "
+    "linear regression, and computes CO₂/CH₄ flux across a unit ladder.\n\n"
+    "All routes are served under the `/api` prefix. The app is **local and "
+    "single-user**: there is no authentication and every endpoint is on the same "
+    "trust level (see `docs/architecture.md`)."
+)
+
+app = FastAPI(
+    title=settings.app_name,
+    version=_API_VERSION,
+    description=_API_DESCRIPTION,
+    # Relative server: paths already carry the /api prefix, so this resolves
+    # against whatever host serves the app (localhost in dev, the domain in prod).
+    servers=[{"url": "/", "description": "Same origin the app is served from"}],
+    lifespan=lifespan,
+)
 
 # Correlation id + per-request logging. Added before CORS so it is the
 # outermost app middleware and sees every request/response (incl. its id echo).

@@ -1,0 +1,16 @@
+{
+  "name": "flux-calculation-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Repo-level documentation tooling for the Flux Calculation monorepo (not an app). The two apps live in frontend/ and backend/ and stay self-contained.",
+  "scripts": {
+    "docs:generate": "python3 backend/scripts/export_openapi.py",
+    "docs:validate": "redocly lint docs/openapi.json",
+    "docs:lint": "markdownlint-cli2",
+    "docs:check": "npm run docs:validate && npm run docs:lint"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^1.34.2",
+    "markdownlint-cli2": "^0.14.0"
+  }
+}

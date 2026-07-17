@@ -10,3 +10,9 @@ HTTPS
 *.bak
 *.bak-*
 *.bak.*
+
+# Traefik basic-auth credentials (never commit)
+traefik/htpasswd
+
+# Root docs-tooling node deps (repo-level markdownlint / redocly)
+/node_modules/

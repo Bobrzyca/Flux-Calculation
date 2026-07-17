@@ -1,0 +1,31 @@
+// markdownlint config for the docs we maintain to best-practice.
+// Scope: the root README, the docs/ runbook + architecture, and the per-app READMEs.
+// We deliberately do NOT lint hand-written long-form specs (CLAUDE.md, report.md,
+// project-brief.md) or the provided assignment/ brief — those are records, not
+// published docs, and would only produce noise.
+{
+  "globs": [
+    "README.md",
+    "docs/**/*.md",
+    "backend/README.md",
+    "frontend/README.md"
+  ],
+  "ignores": [
+    "**/node_modules/**",
+    "**/.venv/**",
+    "**/dist/**"
+  ],
+  "config": {
+    "default": true,
+    // Prose wraps naturally; we don't hard-wrap Markdown.
+    "MD013": false,
+    // Inline HTML is used for <details> and Mermaid blocks.
+    "MD033": false,
+    // Allow duplicate sibling headings (e.g. "Backend" under different sections).
+    "MD024": { "siblings_only": true },
+    // First line need not be a top-level heading (badges/notes are fine).
+    "MD041": false,
+    // Ordered lists may use "1." repeated (renderer numbers them).
+    "MD029": { "style": "one_or_ordered" }
+  }
+}

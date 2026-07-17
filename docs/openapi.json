@@ -1,0 +1,1788 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisDetail": {
+        "properties": {
+          "chamber_area_m2": {
+            "title": "Chamber Area M2",
+            "type": "number"
+          },
+          "chamber_volume_l": {
+            "title": "Chamber Volume L",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "spot_count": {
+            "title": "Spot Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "time_offset_seconds": {
+            "title": "Time Offset Seconds",
+            "type": "number"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "work_date",
+          "spot_count",
+          "status",
+          "created_at",
+          "chamber_area_m2",
+          "chamber_volume_l",
+          "time_offset_seconds"
+        ],
+        "title": "AnalysisDetail",
+        "type": "object"
+      },
+      "AnalysisSummary": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "spot_count": {
+            "title": "Spot Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "work_date",
+          "spot_count",
+          "status",
+          "created_at"
+        ],
+        "title": "AnalysisSummary",
+        "type": "object"
+      },
+      "Body_create_analysis_api_analyses_post": {
+        "properties": {
+          "chamber_area_m2": {
+            "title": "Chamber Area M2",
+            "type": "number"
+          },
+          "chamber_volume_l": {
+            "title": "Chamber Volume L",
+            "type": "number"
+          },
+          "concentration": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concentration"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "pressure": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressure"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "time_offset_seconds": {
+            "default": 0.0,
+            "title": "Time Offset Seconds",
+            "type": "number"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "work_date",
+          "chamber_area_m2",
+          "chamber_volume_l"
+        ],
+        "title": "Body_create_analysis_api_analyses_post",
+        "type": "object"
+      },
+      "Body_update_analysis_api_analyses__analysis_id__put": {
+        "properties": {
+          "chamber_area_m2": {
+            "title": "Chamber Area M2",
+            "type": "number"
+          },
+          "chamber_volume_l": {
+            "title": "Chamber Volume L",
+            "type": "number"
+          },
+          "concentration": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concentration"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "pressure": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressure"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "time_offset_seconds": {
+            "default": 0.0,
+            "title": "Time Offset Seconds",
+            "type": "number"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "work_date",
+          "chamber_area_m2",
+          "chamber_volume_l"
+        ],
+        "title": "Body_update_analysis_api_analyses__analysis_id__put",
+        "type": "object"
+      },
+      "FitWindow": {
+        "properties": {
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "stop": {
+            "title": "Stop",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "stop"
+        ],
+        "title": "FitWindow",
+        "type": "object"
+      },
+      "FluxLadder": {
+        "properties": {
+          "Mg_ha_year": {
+            "title": "Mg Ha Year",
+            "type": "number"
+          },
+          "Mg_ha_year_co2equiv": {
+            "title": "Mg Ha Year Co2Equiv",
+            "type": "number"
+          },
+          "gC_m2_day": {
+            "title": "Gc M2 Day",
+            "type": "number"
+          },
+          "kg_ha_day": {
+            "title": "Kg Ha Day",
+            "type": "number"
+          },
+          "kg_ha_h": {
+            "title": "Kg Ha H",
+            "type": "number"
+          },
+          "kg_ha_year": {
+            "title": "Kg Ha Year",
+            "type": "number"
+          },
+          "kg_m2_h": {
+            "title": "Kg M2 H",
+            "type": "number"
+          },
+          "mol_m2_h": {
+            "title": "Mol M2 H",
+            "type": "number"
+          },
+          "umol_m2_h": {
+            "title": "Umol M2 H",
+            "type": "number"
+          },
+          "umol_m2_s": {
+            "title": "Umol M2 S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "umol_m2_s",
+          "umol_m2_h",
+          "mol_m2_h",
+          "gC_m2_day",
+          "kg_m2_h",
+          "kg_ha_h",
+          "kg_ha_day",
+          "kg_ha_year",
+          "Mg_ha_year",
+          "Mg_ha_year_co2equiv"
+        ],
+        "title": "FluxLadder",
+        "type": "object"
+      },
+      "GasDetail": {
+        "properties": {
+          "fit": {
+            "$ref": "#/components/schemas/GasFit"
+          },
+          "flux_ladder": {
+            "$ref": "#/components/schemas/FluxLadder"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/GasPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "points",
+          "fit",
+          "flux_ladder"
+        ],
+        "title": "GasDetail",
+        "type": "object"
+      },
+      "GasFit": {
+        "properties": {
+          "intercept": {
+            "title": "Intercept",
+            "type": "number"
+          },
+          "n_dropped_nan": {
+            "title": "N Dropped Nan",
+            "type": "integer"
+          },
+          "n_points": {
+            "title": "N Points",
+            "type": "integer"
+          },
+          "n_spikes": {
+            "default": 0,
+            "title": "N Spikes",
+            "type": "integer"
+          },
+          "r2": {
+            "title": "R2",
+            "type": "number"
+          },
+          "slope": {
+            "title": "Slope",
+            "type": "number"
+          }
+        },
+        "required": [
+          "slope",
+          "intercept",
+          "r2",
+          "n_points",
+          "n_dropped_nan"
+        ],
+        "title": "GasFit",
+        "type": "object"
+      },
+      "GasPoint": {
+        "properties": {
+          "in_window": {
+            "title": "In Window",
+            "type": "boolean"
+          },
+          "t_s": {
+            "title": "T S",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "t_s",
+          "value",
+          "in_window"
+        ],
+        "title": "GasPoint",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LogEntry": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "severity",
+          "message"
+        ],
+        "title": "LogEntry",
+        "type": "object"
+      },
+      "MatchSummary": {
+        "properties": {
+          "flux_results": {
+            "title": "Flux Results",
+            "type": "integer"
+          },
+          "spots_computed": {
+            "title": "Spots Computed",
+            "type": "integer"
+          },
+          "spots_skipped": {
+            "title": "Spots Skipped",
+            "type": "integer"
+          },
+          "spots_total": {
+            "title": "Spots Total",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "spots_total",
+          "spots_computed",
+          "spots_skipped",
+          "flux_results"
+        ],
+        "title": "MatchSummary",
+        "type": "object"
+      },
+      "NoteRow": {
+        "properties": {
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "gps": {
+            "default": "",
+            "title": "Gps",
+            "type": "string"
+          },
+          "light_dark": {
+            "default": "",
+            "title": "Light Dark",
+            "type": "string"
+          },
+          "location": {
+            "default": "",
+            "title": "Location",
+            "type": "string"
+          },
+          "nr": {
+            "title": "Nr",
+            "type": "integer"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "stop_time": {
+            "title": "Stop Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nr",
+          "start_time",
+          "stop_time"
+        ],
+        "title": "NoteRow",
+        "type": "object"
+      },
+      "ParsedNotes": {
+        "properties": {
+          "parse_failed": {
+            "title": "Parse Failed",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/NoteRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "parse_failed",
+          "rows"
+        ],
+        "title": "ParsedNotes",
+        "type": "object"
+      },
+      "QualityCheck": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/QualityFlag"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "available",
+          "summary",
+          "flags"
+        ],
+        "title": "QualityCheck",
+        "type": "object"
+      },
+      "QualityFlag": {
+        "properties": {
+          "gas": {
+            "title": "Gas",
+            "type": "string"
+          },
+          "gps": {
+            "title": "Gps",
+            "type": "string"
+          },
+          "issue": {
+            "title": "Issue",
+            "type": "string"
+          },
+          "nr": {
+            "title": "Nr",
+            "type": "integer"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nr",
+          "gps",
+          "gas",
+          "issue",
+          "severity"
+        ],
+        "title": "QualityFlag",
+        "type": "object"
+      },
+      "ResultsPayload": {
+        "properties": {
+          "quality_check": {
+            "$ref": "#/components/schemas/QualityCheck"
+          },
+          "spots": {
+            "items": {
+              "$ref": "#/components/schemas/SpotResult"
+            },
+            "title": "Spots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "quality_check",
+          "spots"
+        ],
+        "title": "ResultsPayload",
+        "type": "object"
+      },
+      "SpotDetail": {
+        "properties": {
+          "fit_offset_s": {
+            "default": 0.0,
+            "title": "Fit Offset S",
+            "type": "number"
+          },
+          "fit_window": {
+            "$ref": "#/components/schemas/FitWindow"
+          },
+          "fit_window_s": {
+            "default": 0.0,
+            "title": "Fit Window S",
+            "type": "number"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "gases": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GasDetail"
+            },
+            "title": "Gases",
+            "type": "object"
+          },
+          "gps": {
+            "title": "Gps",
+            "type": "string"
+          },
+          "light_dark": {
+            "title": "Light Dark",
+            "type": "string"
+          },
+          "manual_offset_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Offset S"
+          },
+          "mode": {
+            "default": "auto",
+            "title": "Mode",
+            "type": "string"
+          },
+          "nr": {
+            "title": "Nr",
+            "type": "integer"
+          },
+          "window_shortened": {
+            "default": false,
+            "title": "Window Shortened",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nr",
+          "gps",
+          "light_dark",
+          "fit_window",
+          "gases"
+        ],
+        "title": "SpotDetail",
+        "type": "object"
+      },
+      "SpotFitUpdate": {
+        "description": "Set (or clear) a spot's manual fit-window offset.\n\n``offset_s`` is seconds after the spot's first reading where the fixed-length\nfit window should start; ``None`` clears the override and restores the\nautomatic best-window selection.",
+        "properties": {
+          "offset_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset S"
+          }
+        },
+        "required": [
+          "offset_s"
+        ],
+        "title": "SpotFitUpdate",
+        "type": "object"
+      },
+      "SpotResult": {
+        "properties": {
+          "ch4_flux_umol_m2_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ch4 Flux Umol M2 S"
+          },
+          "co2_flux_umol_m2_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Co2 Flux Umol M2 S"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "fit_offset_s": {
+            "default": 0.0,
+            "title": "Fit Offset S",
+            "type": "number"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "gps": {
+            "title": "Gps",
+            "type": "string"
+          },
+          "light_dark": {
+            "title": "Light Dark",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "n_points_ch4": {
+            "title": "N Points Ch4",
+            "type": "integer"
+          },
+          "n_points_co2": {
+            "title": "N Points Co2",
+            "type": "integer"
+          },
+          "nr": {
+            "title": "Nr",
+            "type": "integer"
+          },
+          "pressure_used_hpa": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressure Used Hpa"
+          },
+          "r2_ch4": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2 Ch4"
+          },
+          "r2_co2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2 Co2"
+          },
+          "skip_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skip Reason"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "stop": {
+            "title": "Stop",
+            "type": "string"
+          },
+          "temperature_max_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature Max C"
+          },
+          "temperature_min_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature Min C"
+          },
+          "temperature_used_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature Used C"
+          },
+          "time_offset_applied_s": {
+            "title": "Time Offset Applied S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "nr",
+          "date",
+          "start",
+          "stop",
+          "gps",
+          "light_dark",
+          "location",
+          "co2_flux_umol_m2_s",
+          "ch4_flux_umol_m2_s",
+          "r2_co2",
+          "r2_ch4",
+          "temperature_used_c",
+          "pressure_used_hpa",
+          "time_offset_applied_s",
+          "n_points_co2",
+          "n_points_ch4",
+          "flags",
+          "skipped",
+          "skip_reason"
+        ],
+        "title": "SpotResult",
+        "type": "object"
+      },
+      "TSGas": {
+        "properties": {
+          "spots": {
+            "items": {
+              "$ref": "#/components/schemas/TSSpot"
+            },
+            "title": "Spots",
+            "type": "array"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "spots"
+        ],
+        "title": "TSGas",
+        "type": "object"
+      },
+      "TSLinePoint": {
+        "properties": {
+          "t_unix": {
+            "title": "T Unix",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "t_unix",
+          "y"
+        ],
+        "title": "TSLinePoint",
+        "type": "object"
+      },
+      "TSPoint": {
+        "properties": {
+          "in_window": {
+            "title": "In Window",
+            "type": "boolean"
+          },
+          "t_unix": {
+            "title": "T Unix",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "t_unix",
+          "value",
+          "in_window"
+        ],
+        "title": "TSPoint",
+        "type": "object"
+      },
+      "TSSpot": {
+        "properties": {
+          "light_dark": {
+            "title": "Light Dark",
+            "type": "string"
+          },
+          "line": {
+            "items": {
+              "$ref": "#/components/schemas/TSLinePoint"
+            },
+            "title": "Line",
+            "type": "array"
+          },
+          "nr": {
+            "title": "Nr",
+            "type": "integer"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TSPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nr",
+          "light_dark",
+          "points",
+          "line"
+        ],
+        "title": "TSSpot",
+        "type": "object"
+      },
+      "Timeseries": {
+        "properties": {
+          "ch4": {
+            "$ref": "#/components/schemas/TSGas"
+          },
+          "co2": {
+            "$ref": "#/components/schemas/TSGas"
+          }
+        },
+        "required": [
+          "co2",
+          "ch4"
+        ],
+        "title": "Timeseries",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "HTTP API for the Flux Calculation tool — ingests raw closed-chamber greenhouse-gas field files, matches them by timestamp, fits a per-spot linear regression, and computes CO₂/CH₄ flux across a unit ladder.\n\nAll routes are served under the `/api` prefix. The app is **local and single-user**: there is no authentication and every endpoint is on the same trust level (see `docs/architecture.md`).",
+    "title": "Flux Calculation API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/analyses": {
+      "get": {
+        "operationId": "list_analyses_api_analyses_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AnalysisSummary"
+                  },
+                  "title": "Response List Analyses Api Analyses Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Analyses",
+        "tags": [
+          "analyses"
+        ]
+      },
+      "post": {
+        "operationId": "create_analysis_api_analyses_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_analysis_api_analyses_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Analysis",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}": {
+      "delete": {
+        "operationId": "delete_analysis_api_analyses__analysis_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Analysis",
+        "tags": [
+          "analyses"
+        ]
+      },
+      "get": {
+        "operationId": "get_analysis_api_analyses__analysis_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis",
+        "tags": [
+          "analyses"
+        ]
+      },
+      "put": {
+        "description": "Edit an existing analysis: update its settings and **replace** any files.\n\nOnly files actually uploaded are replaced; the rest are kept. Any provided\nconcentration file is re-validated as LI-7810. Replacing files invalidates\nprior results, so the analysis is reset to ``needs_review`` and its computed\nrows are cleared (re-confirm the notes and re-match). Used by the \"change\nfiles / re-run\" flow on an archived analysis.",
+        "operationId": "update_analysis_api_analyses__analysis_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_update_analysis_api_analyses__analysis_id__put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Analysis",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/export": {
+      "get": {
+        "operationId": "export_results_api_analyses__analysis_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "xlsx",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Results",
+        "tags": [
+          "export"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/log": {
+      "get": {
+        "operationId": "get_log_api_analyses__analysis_id__log_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LogEntry"
+                  },
+                  "title": "Response Get Log Api Analyses  Analysis Id  Log Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Log",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/match": {
+      "post": {
+        "operationId": "run_match_api_analyses__analysis_id__match_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Match",
+        "tags": [
+          "match"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/notes": {
+      "get": {
+        "operationId": "get_notes_api_analyses__analysis_id__notes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParsedNotes"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Notes",
+        "tags": [
+          "notes"
+        ]
+      },
+      "put": {
+        "operationId": "put_notes_api_analyses__analysis_id__notes_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/NoteRow"
+                },
+                "title": "Rows",
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParsedNotes"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Notes",
+        "tags": [
+          "notes"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/results": {
+      "get": {
+        "description": "Per-spot results table. ``fit_mode=full`` blocks automatic window fitting and\ncomputes every spot's flux over its whole recorded window.",
+        "operationId": "get_results_api_analyses__analysis_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fit_mode",
+            "required": false,
+            "schema": {
+              "default": "auto",
+              "title": "Fit Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultsPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Results",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/spots/{nr}": {
+      "get": {
+        "description": "Per-spot detail. ``fit_mode=auto`` (default) uses the best/shortened window;\n``fit_mode=full`` fits the whole recorded window as-is (no window search); a\nsaved manual offset on the spot overrides both.",
+        "operationId": "get_spot_detail_api_analyses__analysis_id__spots__nr__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "nr",
+            "required": true,
+            "schema": {
+              "title": "Nr",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fit_mode",
+            "required": false,
+            "schema": {
+              "default": "auto",
+              "title": "Fit Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SpotDetail"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Spot Detail Api Analyses  Analysis Id  Spots  Nr  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Spot Detail",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/spots/{nr}/fit": {
+      "put": {
+        "description": "Set (``offset_s``) or clear (``offset_s=null``) a spot's manual fit-window\noffset — the per-spot correction for a mis-placed automatic window. Persists the\noverride, rewrites the spot's ``FluxResult`` (so results + export follow), logs\nthe change, and returns the recomputed detail.",
+        "operationId": "set_spot_fit_api_analyses__analysis_id__spots__nr__fit_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "nr",
+            "required": true,
+            "schema": {
+              "title": "Nr",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpotFitUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SpotDetail"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Set Spot Fit Api Analyses  Analysis Id  Spots  Nr  Fit Put"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Spot Fit",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/analyses/{analysis_id}/timeseries": {
+      "get": {
+        "description": "All computed spots' concentration points on the real (absolute) time axis,\nwith each spot's fitted flux-line endpoints — for the campaign overview graph.\n``fit_mode=full`` blocks automatic window fitting (whole-recording fit).",
+        "operationId": "get_timeseries_api_analyses__analysis_id__timeseries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fit_mode",
+            "required": false,
+            "schema": {
+              "default": "auto",
+              "title": "Fit Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Timeseries"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Timeseries",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "Liveness probe used by tests and ops.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "Same origin the app is served from",
+      "url": "/"
+    }
+  ]
+}
