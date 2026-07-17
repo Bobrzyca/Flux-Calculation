@@ -62,12 +62,17 @@ From `frontend/`:
 npm install
 npm run dev            # Vite dev server (http://localhost:5173)
 npm run build          # tsc -b && vite build
-npm test               # vitest run   (watch: npm run test:watch)
+npm test               # vitest run — co-located unit/component tests (src/**)
+npm run test:e2e       # playwright — e2e smoke suite (tests/e2e/, builds + previews)
 npm run lint           # oxlint
 npm run format:check   # prettier --check   (npm run format to apply)
 npm run typecheck      # tsc -b --noEmit
 ```
-Lint, format, type-check, and tests must be **green before every commit**.
+Lint, format, type-check, and tests must be **green before every commit**. Tests
+are two layers: **Vitest** unit/component tests co-located under `src/**` (Vitest is
+scoped there via `vite.config.ts` `test.include`), and **Playwright** e2e specs in
+`tests/e2e/` (first run needs `npx playwright install --with-deps chromium`). See
+`tests/README.md`. CI runs both plus lint/typecheck/build (`.github/workflows/test.yml`).
 
 ## Observability (logging + monitoring)
 Structured, level-gated logging (`src/lib/logger.ts`, `VITE_LOG_LEVEL`) with

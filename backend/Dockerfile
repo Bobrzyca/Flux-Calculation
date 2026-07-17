@@ -54,6 +54,11 @@ USER appuser
 
 EXPOSE 8000
 
+# Liveness for the container runtime (uses the app's own health route; python is
+# already present, so no extra tooling). Traefik still routes independently.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health').read()"]
+
 # Production server: no --reload, bind all interfaces so the frontend
 # container can reach it over the shared network.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

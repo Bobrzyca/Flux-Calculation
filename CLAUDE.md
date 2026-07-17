@@ -192,6 +192,25 @@ maps upload only when `SENTRY_AUTH_TOKEN` is set and are never served publicly.
 Uptime is watched by a separate, localhost-only **Uptime Kuma** (`/root/uptime-kuma`).
 See `docs/operations.md` (logging) and `report.md` (monitoring + alert rules).
 
+**Access gate:** the whole public site (frontend, `/api`, `/n8n`) is behind a Traefik
+`basicAuth` middleware (`access-gate` in `traefik/dynamic.yml`) — one shared key
+(login `flux` + password). Credentials live in the git-ignored `traefik/htpasswd`;
+changing them needs a `docker restart flux-calculation-traefik-1`. Key management
+and the full security review are in `report.md` (`# Report — security analysis`).
+
+## CI & security scanning
+**GitHub Actions** (`.github/workflows/`): `test.yml` runs the backend suite
+(pytest + ruff + mypy), the frontend suite (vitest + lint + typecheck + build), the
+Playwright e2e smoke suite, and **checkov** on every push/PR. `deploy.yml` is
+**manual-only and does not deploy** (no CI deploy key) — it just validates the
+images build, with a disabled SSH-deploy scaffold for later.
+**Tests**: backend uses `pytest` (flat suite + `tests/security/`;
+`tests/{unit,integration}/` are placeholders — see `backend/tests/README.md`).
+Frontend has co-located **Vitest** unit tests under `src/**` and **Playwright** e2e
+in `frontend/tests/e2e/` (`npm run test:e2e`) — see `frontend/tests/README.md`.
+**IaC security**: `infrastructure/checkov/` scans the Dockerfiles + workflows +
+secrets (compose is reviewed by hand — checkov has no compose scanner).
+
 ## Definition of done
 A change is done when: the relevant tests pass, lint/format/type-check are clean, the
 app runs, and this `CLAUDE.md` is updated if the workflow or commands changed.

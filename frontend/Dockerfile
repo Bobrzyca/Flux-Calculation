@@ -55,4 +55,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 
+# Liveness for the container runtime (busybox wget ships in the alpine image).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:80/ || exit 1
+
 CMD ["nginx", "-g", "daemon off;"]

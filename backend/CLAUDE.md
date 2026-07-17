@@ -48,7 +48,11 @@ ruff format --check .     # formatting (drop --check to apply)
 mypy .                    # strict type-check (files = ["app"])
 ```
 All four must be **green before every commit** (root rule 2). Write or update a
-**failing test first**, then the code to pass it (root rule 1).
+**failing test first**, then the code to pass it (root rule 1). `pytest` discovers
+tests recursively: the flat `tests/*.py` (unit + API integration) plus
+`tests/security/` (security baseline). `tests/unit/` and `tests/integration/` are
+placeholders mirroring the target layout — see `tests/README.md`. CI runs the whole
+suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile.
 
 ## API structure
 - **Route prefix:** everything the frontend calls lives under **`/api`** (e.g.

@@ -45,6 +45,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: true,
+    // Vitest runs the co-located unit tests under src/ only. Playwright specs
+    // in tests/e2e/ (*.spec.ts) are driven by `npm run test:e2e`, not Vitest.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
     // Keep the app logger quiet during tests (it resolves its level at import).
     // The logger's own test overrides this per-case via createLogger(level).
     env: { VITE_LOG_LEVEL: 'silent' },

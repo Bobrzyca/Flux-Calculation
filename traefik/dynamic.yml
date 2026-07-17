@@ -20,6 +20,8 @@ http:
         - websecure
       service: flux-backend
       priority: 100
+      middlewares:
+        - access-gate
       tls:
         certResolver: letsencrypt
     # Catch-all for the host — SPA + static assets. /api is claimed above first.
@@ -28,6 +30,8 @@ http:
       entryPoints:
         - websecure
       service: flux-frontend
+      middlewares:
+        - access-gate
       tls:
         certResolver: letsencrypt
     # n8n under a subpath on the same host. priority 100 so /n8n beats the
@@ -43,6 +47,7 @@ http:
       service: n8n
       priority: 100
       middlewares:
+        - access-gate
         - n8n-stripprefix
       tls:
         certResolver: letsencrypt
@@ -52,6 +57,15 @@ http:
       stripPrefix:
         prefixes:
           - "/n8n"
+    # Shared access gate: one password protects the whole site (login is the
+    # fixed public name "flux"; the password is the shared key). Credentials are
+    # in the git-ignored ./traefik/htpasswd (apr1 hash). removeHeader strips the
+    # Authorization header so it never reaches the backend/n8n or the logs.
+    access-gate:
+      basicAuth:
+        usersFile: "/etc/traefik/htpasswd"
+        removeHeader: true
+        realm: "Flux Calculation — enter access key"
 
   services:
     flux-backend:

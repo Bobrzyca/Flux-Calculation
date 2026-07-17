@@ -67,6 +67,8 @@ services:
     volumes:
       # Dynamic routing config (routers + services), read-only.
       - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      # Basic-auth credentials for the access gate (git-ignored, never committed).
+      - ./traefik/htpasswd:/etc/traefik/htpasswd:ro
       # Persist issued certificates across restarts (acme.json).
       - letsencrypt:/letsencrypt
     networks:

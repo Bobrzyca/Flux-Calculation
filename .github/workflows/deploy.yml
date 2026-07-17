@@ -1,0 +1,84 @@
+name: deploy
+
+# Deploys to the production VPS ONLY after the `test` workflow has completed
+# successfully on `main`. It never runs when tests fail, and never from any other
+# branch. Manual re-deploys are allowed via workflow_dispatch, but still only from
+# main. Every run is auditable in the Actions log.
+#
+# NOTE: workflow_run triggers off the copy of this file on the DEFAULT branch, so
+# this must be merged to `main` before it can fire (see report.md prerequisites).
+on:
+  workflow_run:
+    workflows: [test]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run two production deploys at once; let an in-flight one finish.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy to VPS
+    runs-on: ubuntu-latest
+    # Gate: manual dispatch must be from main; workflow_run must have SUCCEEDED
+    # on main. Any other case -> the job is skipped (no deploy on failed tests).
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    # Scopes secrets to the protected `production` environment (add required
+    # reviewers there for an approval gate). See report.md.
+    environment: production
+    steps:
+      - name: Resolve tested commit SHA
+        id: sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure SSH (key + known_hosts; nothing printed)
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            # Fallback: trust-on-first-use pin of the host key.
+            ssh-keyscan -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy tested commit over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Recommended server setup is a FORCED-COMMAND key that runs
+          # /usr/local/bin/flux-deploy and reads the ref from $SSH_ORIGINAL_COMMAND,
+          # so the only thing we send is the SHA. The deploy script validates it,
+          # deploys, health-checks, and rolls back on failure (exit != 0 fails CI).
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "$SSH_USER@$SSH_HOST" "$DEPLOY_SHA"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

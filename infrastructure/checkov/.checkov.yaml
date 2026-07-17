@@ -1,0 +1,43 @@
+# Checkov configuration — IaC / container / CI security scanning.
+#
+# Run from the repo root:
+#   checkov --config-file infrastructure/checkov/.checkov.yaml
+# CI runs the same (see .github/workflows/test.yml, job "checkov").
+#
+# Frameworks (checkov has no docker-compose scanner, so we cover what it does):
+#   dockerfile      — the backend/frontend container images
+#   github_actions  — the CI workflows in .github/workflows/ (pinned actions, etc.)
+#   secrets         — catch hardcoded credentials anywhere in the tree
+
+directory:
+  - .
+
+framework:
+  - dockerfile
+  - github_actions
+  - secrets
+
+# Keep the scan to our own code — skip vendored / generated / VCS trees.
+skip-path:
+  - node_modules
+  - .venv
+  - dist
+  - build
+  - .git
+  - test-results
+  - playwright-report
+  - __pycache__
+
+compact: true
+quiet: true
+soft-fail: false
+
+# Justified suppressions — each MUST have a reason.
+skip-check:
+  # CKV_DOCKER_3: "Ensure a non-root user is created."
+  # The frontend image is nginx:alpine, whose master process needs root to bind
+  # :80 and manage workers (workers themselves drop to the unprivileged `nginx`
+  # user). The container is INTERNAL-ONLY — no host port, reachable only through
+  # Traefik on the private flux-net. Switching to nginx-unprivileged would change
+  # the deployment; revisit then. (The backend already runs as a non-root user.)
+  - CKV_DOCKER_3
