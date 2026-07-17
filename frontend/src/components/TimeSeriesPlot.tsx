@@ -47,6 +47,18 @@ export function TimeSeriesPlot({
     const lineX: (number | null)[] = []
     const lineY: (number | null)[] = []
 
+    // The rest of the raw record (between/around spots) — drawn as a faint
+    // background in the all-spots view so the whole record stays visible.
+    // In single-spot view it would zoom the axis out to the whole day, so skip.
+    const bgX: number[] = []
+    const bgY: number[] = []
+    if (mode === 'all') {
+      for (const p of data.background) {
+        bgX.push(p.t_unix * 1000)
+        bgY.push(p.value)
+      }
+    }
+
     for (const s of spots) {
       for (const p of s.points) {
         const ms = p.t_unix * 1000
@@ -67,6 +79,15 @@ export function TimeSeriesPlot({
     }
 
     const traces: Data[] = [
+      {
+        x: bgX,
+        y: bgY,
+        mode: 'markers',
+        type: 'scattergl',
+        name: 'Between spots',
+        marker: { color: VIZ.muted, size: 2, opacity: 0.3 },
+        hovertemplate: '%{x|%H:%M:%S}: %{y}<extra>between spots</extra>',
+      },
       {
         x: outX,
         y: outY,
@@ -141,6 +162,8 @@ export function TimeSeriesPlot({
         {gas} concentration ({data.unit}) versus clock time,{' '}
         {mode === 'single' ? `spot ${selectedNr}` : 'all spots'}. Points inside
         each fitted window are highlighted with the fitted flux line.
+        {mode === 'all' &&
+          ' The rest of the raw record between spots is shown faintly.'}
       </figcaption>
     </figure>
   )

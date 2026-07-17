@@ -183,6 +183,9 @@ export interface TSSpot {
 export interface TSGas {
   unit: string
   spots: TSSpot[]
+  /** The rest of the raw record — points not assigned to any spot — so the
+   * overview graph shows the complete concentration record. */
+  background: TSPoint[]
 }
 
 export interface Timeseries {

@@ -128,6 +128,13 @@ suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile
   and export follow, logs the change, and returns the recomputed `SpotDetail`. 422
   (`bad_offset`) if `offset_s` < 0, 404 if the spot doesn't exist. Manual offsets
   survive a re-`match` (the match step honours them).
+- `GET /api/analyses/{id}/timeseries?fit_mode=auto|full` → `Timeseries` (per gas:
+  every computed spot's points on the absolute time axis with `in_window`, the
+  fit-line endpoints, **and `background`** — the rest of the raw concentration
+  record not assigned to any spot, re-parsed from the stored LI-7810 file with the
+  analysis offset applied, so the overview graph shows the **complete** record. A
+  missing/unreadable stored file degrades to an empty `background`). 422
+  (`bad_fit_mode`) on an unknown `fit_mode`.
 - `GET /api/analyses/{id}/log` → the `ProcessingLogEntry` rows in order.
 - Read endpoints recompute per-spot fits from the persisted `Reading` rows via the
   same `fit_spot` pipeline (one code path); `FluxResult` stays the durable record

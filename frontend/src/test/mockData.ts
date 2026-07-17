@@ -691,8 +691,14 @@ export function buildTimeseries(): import('@/api/types').Timeseries {
       { t_unix: base + offset + 19, y: 401.9 },
     ],
   })
+  // Unassigned record between the two spots (the graph's background trace).
+  const background = Array.from({ length: 10 }, (_, i) => ({
+    t_unix: base + 40 + i,
+    value: 400,
+    in_window: false,
+  }))
   return {
-    co2: { unit: 'ppm', spots: [mk(1, 0), mk(2, 100)] },
-    ch4: { unit: 'ppb', spots: [mk(1, 0), mk(2, 100)] },
+    co2: { unit: 'ppm', spots: [mk(1, 0), mk(2, 100)], background },
+    ch4: { unit: 'ppb', spots: [mk(1, 0), mk(2, 100)], background },
   }
 }

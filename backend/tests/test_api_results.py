@@ -186,6 +186,31 @@ def test_timeseries_full_mode(client: TestClient) -> None:
     )
 
 
+def test_timeseries_includes_background(client: TestClient) -> None:
+    """The overview graph must show the WHOLE concentration record: points not
+    assigned to any spot (before the first, between spots, after the last) come
+    back as ``background`` so no data silently disappears from the graph."""
+    analysis_id = _create_and_match(client)
+    ts = client.get(f"/api/analyses/{analysis_id}/timeseries").json()
+
+    for gas in ("co2", "ch4"):
+        background = ts[gas]["background"]
+        # The sample stream runs 09:37–09:57; the spot slices cover only part of
+        # it, so a real chunk of the record must land in the background.
+        assert len(background) > 100
+        assert all(p["in_window"] is False for p in background)
+        # Background never duplicates a point already drawn by a spot trace.
+        spot_ts = {p["t_unix"] for s in ts[gas]["spots"] for p in s["points"]}
+        assert all(p["t_unix"] not in spot_ts for p in background)
+
+    # Together the spot traces + background cover the full parsable record.
+    covered = {p["t_unix"] for s in ts["co2"]["spots"] for p in s["points"]} | {
+        p["t_unix"] for p in ts["co2"]["background"]
+    }
+    # 20-min stream at 1 Hz minus warm-up/midstream nans: well above 1000 points.
+    assert len(covered) > 1000
+
+
 def test_timeseries_endpoint(client: TestClient) -> None:
     analysis_id = _create_and_match(client)
     resp = client.get(f"/api/analyses/{analysis_id}/timeseries")

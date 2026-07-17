@@ -10,10 +10,13 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.api.errors import api_error
+from app.db import storage
 from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading, Spot
 from app.db.session import get_session
 from app.flux import constants as C
 from app.flux.pipeline import GAS_COLUMN, GasResult, fit_spot
+from app.matching.timeshift import apply_offset
+from app.parsing.li7810 import parse_li7810
 from app.schemas.results import (
     FitWindow,
     FluxLadder,
@@ -457,14 +460,20 @@ def get_timeseries(
     """All computed spots' concentration points on the real (absolute) time axis,
     with each spot's fitted flux-line endpoints — for the campaign overview graph.
     ``fit_mode=full`` blocks automatic window fitting (whole-recording fit).
+
+    Each gas also carries ``background``: the rest of the raw concentration
+    record (before the first spot, between spots, after the last), so the graph
+    shows the complete record rather than only the per-spot slices.
     """
     _check_fit_mode(fit_mode)
     analysis = _get_analysis(session, analysis_id)
     gas_spots: dict[str, list[TSSpot]] = {"CO2": [], "CH4": []}
+    covered: set[float] = set()  # timestamps already drawn by a spot trace
     for spot in sorted(analysis.spots, key=lambda s: s.nr):
         readings = _sorted_readings(spot)
         if not readings:
             continue
+        covered.update(r.timestamp for r in readings)
         fits = _fit_results(
             analysis, readings, mode=fit_mode, manual_offset_s=spot.manual_offset_s
         )
@@ -499,10 +508,40 @@ def get_timeseries(
                     line=line,
                 )
             )
+    background = _timeseries_background(analysis, covered)
     return Timeseries(
-        co2=TSGas(unit="ppm", spots=gas_spots["CO2"]),
-        ch4=TSGas(unit="ppb", spots=gas_spots["CH4"]),
+        co2=TSGas(unit="ppm", spots=gas_spots["CO2"], background=background["CO2"]),
+        ch4=TSGas(unit="ppb", spots=gas_spots["CH4"], background=background["CH4"]),
     )
+
+
+def _timeseries_background(
+    analysis: Analysis, covered: set[float]
+) -> dict[str, list[TSPoint]]:
+    """Points of the raw concentration record not covered by any spot's readings.
+
+    Re-parses the stored LI-7810 file with the analysis's time offset applied
+    (the persisted readings carry offset-corrected timestamps, so the two align
+    exactly). A missing or unreadable stored file degrades gracefully to an
+    empty background — the spot traces still render.
+    """
+    background: dict[str, list[TSPoint]] = {gas: [] for gas in GAS_COLUMN}
+    conc_path = storage.find_stored(analysis.id, "concentration")
+    if conc_path is None:
+        return background
+    try:
+        raw = apply_offset(parse_li7810(conc_path), analysis.time_offset_seconds)
+    except ValueError, OSError:
+        return background
+    for gas in GAS_COLUMN:
+        attr = _GAS_META[gas][0]
+        background[gas] = [
+            TSPoint(t_unix=t, value=float(value), in_window=False)
+            for row in raw.itertuples(index=False)
+            if (t := float(row.timestamp)) not in covered
+            and not pd.isna(value := getattr(row, attr))
+        ]
+    return background
 
 
 @router.get("/analyses/{analysis_id}/log", response_model=list[LogEntry])

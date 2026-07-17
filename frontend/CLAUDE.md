@@ -31,6 +31,12 @@ shows how far the fit window shifted after the recorded start, its length, wheth
 was shortened to recover R², and the per-gas isolated-spike drop count
 (`SpotDetail.fit_offset_s/fit_window_s/window_shortened`, `GasFit.n_spikes`).
 
+**Complete record on the overview graph:** `Timeseries.TSGas` carries
+`background` — the raw concentration points not assigned to any spot —
+and `TimeSeriesPlot` draws them as a faint trace in the all-spots view (skipped
+in single-spot view so the axis stays zoomed to the spot), so no part of the
+LI-7810 record silently disappears from the graph.
+
 **Manual per-spot shift:** `SpotDetail` has a "Manual fit window" control (−/+ nudge
 + seconds input + Apply / Reset to auto) that calls `api.setSpotFit(id, nr, offsetS)`
 (`PUT …/spots/{nr}/fit`, `offsetS=null` resets). The saved offset overrides the page

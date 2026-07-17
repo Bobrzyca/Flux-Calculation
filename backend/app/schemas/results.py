@@ -154,6 +154,10 @@ class TSSpot(BaseModel):
 class TSGas(BaseModel):
     unit: str
     spots: list[TSSpot]
+    # The rest of the raw concentration record — points not assigned to any
+    # spot (before the first, between spots, after the last) — so the overview
+    # graph can show the COMPLETE record, not just the per-spot slices.
+    background: list[TSPoint]
 
 
 class Timeseries(BaseModel):
