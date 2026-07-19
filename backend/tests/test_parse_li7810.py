@@ -151,29 +151,70 @@ def test_high_co2_spikes_dropped(tmp_path: Path) -> None:
     assert df["ch4_ppb"].iloc[1] == 1991.0  # CH4 untouched
 
 
-def test_diag_flagged_rows_dropped(tmp_path: Path) -> None:
-    # The LI-7810's own DIAG column flags degraded samples (nonzero). Those rows
-    # carry garbage in BOTH gases (CH4 in the millions of ppb, negative CO2), so
-    # the parser must nan them out — otherwise they wreck the graph axes and any
-    # fit window they land in.
-    f = tmp_path / "diag.txt"
+def test_diag_red_codes_drop_both_gases(tmp_path: Path) -> None:
+    # LI-COR's manual (Table 2-2): DIAG bits >= 32 ("red" codes — spectral fit
+    # residual too high, unregulated pressures/temperatures, inlet clogged, not
+    # ready) mean "measurements are invalid" — both gases must be nan'd.
+    f = tmp_path / "diag_red.txt"
     f.write_text(
         "Model:\tLI-7810\n"
         "DATAH\tSECONDS\tDIAG\tCO2\tCH4\n"
         "DATA\t1782985020\t0\t420.0\t1990.0\n"
-        "DATA\t1782985021\t4\t-350.0\t2896621.2\n"
-        "DATA\t1782985022\t112\t980.0\t1991.0\n"
-        "DATA\t1782985023\t0\t421.0\t1992.0\n",
+        "DATA\t1782985021\t112\t980.0\t1991.0\n"
+        "DATA\t1782985022\t36\t-350.0\t2896621.2\n"
+        "DATA\t1782985023\t256\t421.0\t1992.0\n",
         encoding="utf-8",
     )
     df = parse_li7810(f)
-    # Flagged rows: both gases dropped (their timestamps survive).
-    assert df["co2_ppm"].isna().iloc[1] and df["ch4_ppb"].isna().iloc[1]
-    assert df["co2_ppm"].isna().iloc[2] and df["ch4_ppb"].isna().iloc[2]
+    for i in (1, 2, 3):
+        assert df["co2_ppm"].isna().iloc[i] and df["ch4_ppb"].isna().iloc[i]
     assert df["timestamp"].notna().all() and len(df) == 4
-    # Clean rows untouched.
     assert df["co2_ppm"].iloc[0] == 420.0
-    assert df["ch4_ppb"].iloc[3] == 1992.0
+
+
+def test_diag_yellow_codes_keep_plausible_readings(tmp_path: Path) -> None:
+    # DIAG bits 1..16 ("yellow" codes — adjustment underway, start-up) mean
+    # "measurements may be noisy" but VALID. Dropping them wiped out whole
+    # spots on real campaigns (2026-07-02 Kampinos: 5 spots lost); keep them
+    # and let the per-gas range checks + despike handle the noise.
+    f = tmp_path / "diag_yellow.txt"
+    f.write_text(
+        "Model:\tLI-7810\n"
+        "DATAH\tSECONDS\tDIAG\tCO2\tCH4\n"
+        "DATA\t1782985020\t0\t420.0\t1990.0\n"
+        "DATA\t1782985021\t4\t430.0\t1995.0\n"
+        "DATA\t1782985022\t16\t425.0\t461932.8\n"
+        "DATA\t1782985023\t8\t-350.0\t1992.0\n",
+        encoding="utf-8",
+    )
+    df = parse_li7810(f)
+    # Plausible values on yellow rows survive.
+    assert df["co2_ppm"].iloc[1] == 430.0 and df["ch4_ppb"].iloc[1] == 1995.0
+    # Implausible values are dropped per gas, not per row: laser mode-hop CH4
+    # garbage loses only CH4; a negative CO2 loses only CO2.
+    assert df["co2_ppm"].iloc[2] == 425.0 and df["ch4_ppb"].isna().iloc[2]
+    assert df["co2_ppm"].isna().iloc[3] and df["ch4_ppb"].iloc[3] == 1992.0
+
+
+def test_garbage_ch4_dropped_regardless_of_diag(tmp_path: Path) -> None:
+    # CH4 outside the plausible range (mode-hop artefacts in the 100k+ ppb
+    # range, or negative) is dropped (nan) even on unflagged rows; CO2 on the
+    # same row is untouched.
+    f = tmp_path / "ch4.txt"
+    f.write_text(
+        "Model:\tLI-7810\n"
+        "SECONDS\tCO2\tCH4\n"
+        "1782985020\t420.0\t1990.0\n"
+        "1782985021\t421.0\t578073.0\n"
+        "1782985022\t422.0\t-5.0\n"
+        "1782985023\t423.0\t42895.7\n",
+        encoding="utf-8",
+    )
+    df = parse_li7810(f)
+    assert df["ch4_ppb"].isna().iloc[1]  # mode-hop garbage -> nan
+    assert df["ch4_ppb"].isna().iloc[2]  # negative -> nan
+    assert df["ch4_ppb"].iloc[3] == 42895.7  # a real high chamber rise survives
+    assert df["co2_ppm"].notna().all()
 
 
 def test_gross_negative_co2_dropped(tmp_path: Path) -> None:

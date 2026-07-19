@@ -217,10 +217,17 @@ noted in the log.
 — a lone value off both agreeing neighbours by > `DESPIKE_K` × the robust step
 scale; runs are never cut), counted per gas as `n_spikes` (separate from `nan`
 gaps) and logged. `parse_li7810` also drops (nan) **both gases on rows the
-instrument itself flags as degraded** — nonzero `DIAG` (warm-up, cavity faults;
-those rows carry garbage like CH₄ in the millions of ppb or negative CO₂) — and
-out-of-range CO₂: ≥ `MAX_VALID_CO2_PPM` (1500 ppm, matching the R method) and
-< `MIN_VALID_CO2_PPM` (-1500 ppm, gross-negative faults / error sentinels).
+instrument itself marks INVALID** — a `DIAG` status bit ≥ 32 ("red" codes per
+LI-COR's manual Table 2-2: spectral-fit residual too high, unregulated
+pressures/temperatures, inlet clogged, not ready). "Yellow" `DIAG` codes
+(1–16: frequency/laser-temperature adjustment, incomplete scan, start-up) mean
+*noisy but valid* and are **kept** — dropping them lost whole spots on real
+campaigns. Noise on kept rows is handled **per gas** by plausibility ranges:
+CO₂ in [`MIN_VALID_CO2_PPM`, `MAX_VALID_CO2_PPM`) = [0, 1500) ppm (upper bound
+matches the R method; negative CO₂ is physically impossible) and CH₄ in
+[`MIN_VALID_CH4_PPB`, `MAX_VALID_CH4_PPB`) = [0, 100 000) ppb (ambient ~2 000,
+real chamber rises peak in the tens of thousands; laser mode-hop artefacts
+cluster from ~130k up) — an implausible value nulls only that gas.
 **Whole-recording mode:** `fit_spot(..., mode="full")` skips the window search and
 fits the entire recorded span as-is (despiking still applies) — surfaced via the
 `fit_mode=full` query param on the **results, timeseries, and spot-detail**
