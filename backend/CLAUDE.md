@@ -238,7 +238,8 @@ script replaces it and is run on the 2026-07-02 Kampinos campaign.
 
 The `matching/` package is pure: `timeshift.py` (`apply_offset` adds the
 instrument-clock offset to the concentration timestamps) and `match.py`
-(`slice_spot` windows the offset-corrected stream by a note's `HH:MM:SS` on the
+(`slice_spot` windows the offset-corrected stream by a note's `HH:MM:SS` — or
+`HH:MM`, seconds default to 0 — on the
 work date; `nearest_temperature`/`nearest_pressure`; `match_spot` returns the
 annotated in-window readings, the per-spot temp/pressure, skip reasons — empty
 window / stop-before-start / unparseable time — the `no_pressure` flag, and
@@ -263,7 +264,9 @@ Columns mirror `project-brief.md` → "Data stored by the application" (with an 
   time_offset_seconds, status, created_at)` — `status` is
   `draft | needs_review | complete`.
 - **`Spot`** `(id, analysis_id, nr, gps, light_dark, location_desc, start_time,
-  stop_time, manual_offset_s)` — `start_time`/`stop_time` are `HH:MM:SS` strings;
+  stop_time, manual_offset_s)` — `start_time`/`stop_time` are `HH:MM:SS` strings
+  (`PUT …/notes` normalises hand-edited times, e.g. `9:41` → `09:41:00`; a
+  malformed time is stored as `""` and skips just that spot at match time);
   `manual_offset_s` (nullable) is the saved manual fit-window override (None =
   automatic). Added after initial release, so `create_db_and_tables` runs a tiny
   idempotent `ADD COLUMN` migration (`session.py:_run_lightweight_migrations`) for

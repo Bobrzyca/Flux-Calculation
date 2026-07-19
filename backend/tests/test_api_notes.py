@@ -68,6 +68,23 @@ def test_put_notes_add_and_delete_rows(client: TestClient) -> None:
     assert summary["spot_count"] == 4
 
 
+def test_put_notes_normalizes_times(client: TestClient) -> None:
+    # Hand-edited times without seconds (or with dots) must be stored as
+    # HH:MM:SS — "10:35" strings previously crashed the match step.
+    analysis_id = _create(client)
+    rows = client.get(f"/api/analyses/{analysis_id}/notes").json()["rows"]
+    for row in rows:
+        if row["nr"] == 1:
+            row["start_time"] = "9:41"
+            row["stop_time"] = "09.47"
+
+    resp = client.put(f"/api/analyses/{analysis_id}/notes", json=rows)
+    assert resp.status_code == 200
+    by_nr = {r["nr"]: r for r in resp.json()["rows"]}
+    assert by_nr[1]["start_time"] == "09:41:00"
+    assert by_nr[1]["stop_time"] == "09:47:00"
+
+
 def test_notes_unknown_analysis_404(client: TestClient) -> None:
     assert client.get("/api/analyses/nope/notes").status_code == 404
     assert client.put("/api/analyses/nope/notes", json=[]).status_code == 404

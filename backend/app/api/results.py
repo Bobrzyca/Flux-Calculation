@@ -15,6 +15,7 @@ from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading, Spo
 from app.db.session import get_session
 from app.flux import constants as C
 from app.flux.pipeline import GAS_COLUMN, GasResult, fit_spot
+from app.matching.match import parse_note_time
 from app.matching.timeshift import apply_offset
 from app.parsing.li7810 import parse_li7810
 from app.schemas.results import (
@@ -113,7 +114,7 @@ def _spot_flags(
 
 
 def _shift_hhmmss(hhmmss: str, seconds: int) -> str:
-    hour, minute, second = (int(part) for part in hhmmss.split(":"))
+    hour, minute, second = parse_note_time(hhmmss)
     total = (hour * 3600 + minute * 60 + second + seconds) % 86400
     return f"{total // 3600:02d}:{(total % 3600) // 60:02d}:{total % 60:02d}"
 

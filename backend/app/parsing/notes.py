@@ -65,7 +65,7 @@ class NoteRow:
     flags: list[str] = field(default_factory=list)
 
 
-def _normalize_time(raw: str) -> str:
+def normalize_time(raw: str) -> str:
     """Normalise a clean time to ``HH:MM:SS``; return ``""`` if unparseable."""
     s = raw.strip().replace(".", ":")
     if not s:
@@ -182,8 +182,8 @@ def parse_notes(path: str | Path) -> list[NoteRow]:
         rows.append(
             NoteRow(
                 nr=_parse_nr(cell(record, "nr")),
-                start_time=_normalize_time(cell(record, "start")),
-                stop_time=_normalize_time(cell(record, "stop")),
+                start_time=normalize_time(cell(record, "start")),
+                stop_time=normalize_time(cell(record, "stop")),
                 gps=cell(record, "gps"),
                 light_dark=_normalize_light_dark(cell(record, "light_dark")),
                 location=cell(record, "location"),

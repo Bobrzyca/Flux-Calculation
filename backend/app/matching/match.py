@@ -50,9 +50,23 @@ class SpotMatch:
     logs: list[LogMessage] = field(default_factory=list)
 
 
+def parse_note_time(hhmmss: str) -> tuple[int, int, int]:
+    """Split a note time into (hour, minute, second); seconds are optional.
+
+    Hand-typed notes often carry ``HH:MM`` — treat that as ``:00`` rather than
+    failing. Raises ``ValueError`` for anything else.
+    """
+    parts = [int(part) for part in hhmmss.split(":")]
+    if len(parts) == 2:
+        return parts[0], parts[1], 0
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]
+    raise ValueError(f"expected HH:MM:SS or HH:MM, got {hhmmss!r}")
+
+
 def note_time_to_unix(work_date: date, hhmmss: str) -> float:
-    """Combine a ``HH:MM:SS`` note time with the work date into unix seconds (UTC)."""
-    hour, minute, second = (int(part) for part in hhmmss.split(":"))
+    """Combine a note time (``HH:MM:SS`` or ``HH:MM``) with the work date (UTC)."""
+    hour, minute, second = parse_note_time(hhmmss)
     when = datetime(
         work_date.year, work_date.month, work_date.day, hour, minute, second, tzinfo=UTC
     )
@@ -124,7 +138,14 @@ def match_spot(
     """Match one spot: validate its window, slice readings, attach temp/pressure."""
     empty = readings.iloc[0:0].copy()
 
-    if not start or not stop:
+    try:
+        # Empty strings and malformed times take the same skip path: a bad
+        # hand-typed time must skip one spot, never 500 the whole match run.
+        if not start or not stop:
+            raise ValueError("missing time")
+        start_unix = note_time_to_unix(work_date, start)
+        stop_unix = note_time_to_unix(work_date, stop)
+    except ValueError:
         return SpotMatch(
             nr,
             empty,
@@ -136,9 +157,6 @@ def match_spot(
                 LogMessage("error", f"Spot {nr} skipped: unparseable start/stop time")
             ],
         )
-
-    start_unix = note_time_to_unix(work_date, start)
-    stop_unix = note_time_to_unix(work_date, stop)
     if stop_unix <= start_unix:
         return SpotMatch(
             nr,

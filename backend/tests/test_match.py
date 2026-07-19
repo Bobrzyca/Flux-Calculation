@@ -117,6 +117,29 @@ def test_match_spot_unparseable_time_skips() -> None:
     assert match.skip_reason == "unparseable time"
 
 
+def test_note_time_accepts_hhmm() -> None:
+    # Hand-typed notes often omit seconds; "HH:MM" must mean ":00".
+    assert note_time_to_unix(WORK_DATE, "09:05") == note_time_to_unix(
+        WORK_DATE, "09:05:00"
+    )
+
+
+def test_match_spot_accepts_hhmm_times() -> None:
+    match = match_spot(
+        9, _stream(), "09:01", "09:07", WORK_DATE, 0, _temperature(), _pressure()
+    )
+    assert not match.skipped
+    assert len(match.readings) > 0
+
+
+def test_match_spot_garbage_time_skips_not_crashes() -> None:
+    match = match_spot(
+        10, _stream(), "9h05", "09:07:00", WORK_DATE, 0, _temperature(), _pressure()
+    )
+    assert match.skipped
+    assert match.skip_reason == "unparseable time"
+
+
 def test_match_spot_no_pressure_flag() -> None:
     match = match_spot(
         6, _stream(), "09:01:00", "09:03:00", WORK_DATE, 0, _temperature(), []

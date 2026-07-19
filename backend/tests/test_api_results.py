@@ -2,7 +2,14 @@
 
 from fastapi.testclient import TestClient
 
+from app.api.results import _shift_hhmmss
 from tests.conftest import sample_files, sample_form
+
+
+def test_shift_hhmmss_accepts_hhmm() -> None:
+    # Spot times saved without seconds must not crash the window display.
+    assert _shift_hhmmss("09:05", 30) == "09:05:30"
+    assert _shift_hhmmss("09:05:10", 60) == "09:06:10"
 
 
 def _create_and_match(client: TestClient) -> str:

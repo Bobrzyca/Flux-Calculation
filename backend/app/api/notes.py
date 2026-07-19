@@ -11,7 +11,7 @@ from app.api.errors import api_error
 from app.db.models import Analysis, Spot
 from app.db.session import get_session
 from app.parsing.notes import NoteRow as ParsedNoteRow
-from app.parsing.notes import validate_notes
+from app.parsing.notes import normalize_time, validate_notes
 from app.schemas.notes import NoteRow, ParsedNotes
 
 router = APIRouter(prefix="/api", tags=["notes"])
@@ -76,11 +76,13 @@ def put_notes(
             session.delete(flux)
         session.delete(spot)
 
+    # Normalise hand-edited times ("9:41", "09.47") to HH:MM:SS on the way in;
+    # an unparseable time becomes "" and skips just that spot at match time.
     parsed = [
         ParsedNoteRow(
             nr=r.nr,
-            start_time=r.start_time,
-            stop_time=r.stop_time,
+            start_time=normalize_time(r.start_time),
+            stop_time=normalize_time(r.stop_time),
             gps=r.gps,
             light_dark=r.light_dark,
             location=r.location,
