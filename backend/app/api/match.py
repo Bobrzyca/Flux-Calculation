@@ -205,12 +205,15 @@ def run_match(
             manual_offset_s=spot.manual_offset_s,
         )
         chosen = next(iter(results.values()))
-        offset, length = chosen.fit_offset_s, chosen.fit_window_s
+        # NB: deliberately NOT named `offset` — that variable is the analysis's
+        # instrument-clock offset, and shadowing it here once shifted every
+        # subsequent spot's window by the previous spot's fit offset.
+        fit_off, length = chosen.fit_offset_s, chosen.fit_window_s
         logs.append(
             (
                 "info",
-                f"Spot {spot.nr}: fit window = start +{int(offset)} s → +"
-                f"{int(offset + length)} s "
+                f"Spot {spot.nr}: fit window = start +{int(fit_off)} s → +"
+                f"{int(fit_off + length)} s "
                 f"(most-linear {int(length)} s window)",
             )
         )

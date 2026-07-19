@@ -55,6 +55,40 @@ def test_match_computes_and_persists(client: TestClient, session: Session) -> No
     assert any("slope=" in m and "R²=" in m for m in messages)
 
 
+def test_spot_windows_not_shifted_by_previous_spots_fit(
+    client: TestClient, session: Session
+) -> None:
+    # Regression: the match loop reused the variable `offset` (the analysis's
+    # instrument-clock offset) to report the fit window, so every spot after
+    # the first was sliced with the PREVIOUS spot's fit offset — its readings
+    # (and fluxes) came from the wrong slice of the record. The window edges
+    # look right either way (timestamps are stored post-shift), so compare the
+    # VALUES: with a 0 clock offset, each persisted reading must carry the raw
+    # stream's concentration at that same timestamp.
+    from app.parsing.li7810 import parse_li7810
+    from tests.conftest import SAMPLE_DIR
+
+    analysis_id = _create(client)
+    client.post(f"/api/analyses/{analysis_id}/match")
+    analysis = session.get(Analysis, analysis_id)
+    assert analysis is not None
+    raw = parse_li7810(SAMPLE_DIR / "li7810_sample.txt")
+    co2_at = {
+        float(t): float(v)
+        for t, v in zip(raw["timestamp"], raw["co2_ppm"], strict=True)
+        if v == v  # skip nan
+    }
+    spots = {s.nr: s for s in analysis.spots}
+    for nr in (1, 2):  # both data-carrying spots; clock offset is 0
+        checked = 0
+        for r in spots[nr].readings:
+            if r.co2_ppm is None or r.timestamp not in co2_at:
+                continue
+            assert r.co2_ppm == co2_at[r.timestamp], f"spot {nr} window shifted"
+            checked += 1
+        assert checked > 50  # the comparison actually covered the window
+
+
 def test_low_r2_spot_still_computes(client: TestClient, session: Session) -> None:
     analysis_id = _create(client)
     client.post(f"/api/analyses/{analysis_id}/match")
