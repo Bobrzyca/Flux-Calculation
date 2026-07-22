@@ -217,6 +217,25 @@ def test_garbage_ch4_dropped_regardless_of_diag(tmp_path: Path) -> None:
     assert df["co2_ppm"].notna().all()
 
 
+def test_parse_daymonthyear_date_format(tmp_path: Path) -> None:
+    # Real LI-7810 exports write the European day-first DATE ``DD.MM.YYYY``
+    # (here 06.10.2025 = 6 October). Parsing it month-first would put the whole
+    # record on 10 June and it would never line up with the temperature log
+    # (which is read day-first). The timeline must resolve to 6 October.
+    f = tmp_path / "dmy.txt"
+    f.write_text(
+        "Model:\tLI-7810\n"
+        "DATAH\tSECONDS\tDIAG\tDATE\tTIME\tCO2\tCH4\n"
+        "DATAU\tsecs\tdiag\tdate\ttime\tppm\tppb\n"
+        "DATA\t1759738859\t0\t06.10.2025\t10:20:59\t527.5\t2088.5\n"
+        "DATA\t1759738860\t0\t06.10.2025\t10:21:00\t235.9\t2124.2\n",
+        encoding="utf-8",
+    )
+    df = parse_li7810(f)
+    assert df["timestamp"].iloc[0] == note_time_to_unix(date(2025, 10, 6), "10:20:59")
+    assert df["co2_ppm"].iloc[0] == 527.5
+
+
 def test_parse_non_utf8_windows_encoding(tmp_path: Path) -> None:
     # Real LI-7810 exports off a Windows machine are often saved in a legacy
     # code page (cp1250 in Poland), not UTF-8, and the metadata preamble may

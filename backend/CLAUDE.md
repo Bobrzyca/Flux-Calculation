@@ -181,7 +181,11 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
   the `SECONDS` column — real exports put true-unix in `SECONDS` (a different
   timezone from the field notes), so using it would misalign matching by the UTC
   offset. Falls back to `SECONDS` only when DATE/TIME are absent (or when Excel
-  re-cast the DATE/TIME cells so none parse).
+  re-cast the DATE/TIME cells so none parse). **The DATE format is chosen by
+  separator:** dotted `DD.MM.YYYY` (European, e.g. `06.10.2025` = 6 October) is
+  parsed **day-first** to match the temperature loader; dashed `YYYY-MM-DD` (ISO)
+  is year-first (forcing day-first on ISO makes pandas flip it to the wrong
+  month).
   - **Encoding + Excel tolerance:** the text reader tries `utf-8-sig`, then Polish
     Windows `cp1250`, then `latin-1` (and honours a UTF-16 BOM) — so a Windows
     export with non-ASCII preamble bytes (`°C`, a Polish site name) or a legacy

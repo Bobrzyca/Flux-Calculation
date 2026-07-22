@@ -258,14 +258,21 @@ def _timeline(raw: pd.DataFrame, by_upper: dict[str, str]) -> pd.Series:
     temperature log. The ``SECONDS`` column is *true* unix (a different timezone
     on real exports), so using it directly would misalign matching by the UTC
     offset. Fall back to ``SECONDS`` only when DATE/TIME aren't present.
+
+    The date format is chosen by separator: the European **dotted**
+    ``DD.MM.YYYY`` (e.g. ``06.10.2025`` = 6 October) is parsed **day-first** to
+    match the temperature loader — reading it month-first would land the whole
+    record on the wrong day (June instead of October) and it would never line up
+    with the temperature log. **Dashed** ISO ``YYYY-MM-DD`` is year-first and is
+    parsed as-is (forcing ``dayfirst`` on ISO makes pandas flip it to June).
     """
     if "DATE" in by_upper and "TIME" in by_upper:
-        combined = (
-            raw[by_upper["DATE"]].astype(str).str.strip()
-            + " "
-            + raw[by_upper["TIME"]].astype(str).str.strip()
-        )
-        when = pd.to_datetime(combined, utc=True, errors="coerce")
+        date_str = raw[by_upper["DATE"]].astype(str).str.strip()
+        combined = date_str + " " + raw[by_upper["TIME"]].astype(str).str.strip()
+        # Dotted dates are European day-first (DD.MM.YYYY); dashed dates are ISO
+        # (YYYY-MM-DD, year-first). One instrument uses one format per file.
+        dayfirst = bool(date_str.str.contains(".", regex=False).any())
+        when = pd.to_datetime(combined, utc=True, errors="coerce", dayfirst=dayfirst)
         # Only trust DATE/TIME if at least one row actually parsed. Excel can
         # re-cast those cells to its own date/time serials, which stringify to a
         # form to_datetime can't read; when every row fails, fall back to the
