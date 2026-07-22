@@ -212,12 +212,19 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
   European day-first. When headers are unrecognised it falls back to the column that
   parses as the most datetimes. Unreadable / no date / no temp column → clean
   `ValueError` (→ 422).
-- `notes.py` auto-detects the delimiter for `.csv`/`.txt`/`.tsv` (tab/`;`/`,`);
-  **normalises header whitespace** (a Word table cell may wrap `Light/dark` as
-  `"Light\n/dark"` — the newline must not break resolution); recognises Polish
-  headers incl. `Punkt`/`Pkt` (number), `Chamber`/`Komora` (light/dark), `End`
-  (stop), `Gdzie`/`comment`/`komentarz`/`uwagi` (location, shown as "Comment" in the
-  UI + export); a bare `?` GPS counts as missing.
+- `notes.py` auto-detects the delimiter for `.csv`/`.txt`/`.tsv` (tab/`;`/`,`, plus
+  a **2+-space** fallback for space-aligned exports so verbose headers/values keep
+  their single internal spaces). Columns are resolved **intelligently** by
+  `_FIELD_MATCHERS` — an exact whole-header token *and* a substring keyword, in
+  English + simple Polish — so verbose real headers resolve without a hard-coded
+  alias: `Start`/`End` (start/stop), `Light or Dark`/`Chamber`/`Komora`
+  (light/dark), `GPS`, `Punkt`/`Pkt`/`numer` (number), `Gdzie`/`Other site
+  Info`/`comment`/`uwagi` (location). Unrelated columns (`Date`,
+  `Type Of Measurement` — only an exact `type` maps to light/dark —, `TEMPERATURA`)
+  are ignored; each header is claimed once, in priority order, so specific fields
+  win over the broad location keywords. Header whitespace/newlines are stripped
+  first (a Word table may wrap `Light/dark` as `"Light\n/dark"`); a bare `?` GPS
+  counts as missing.
   Spot `nr` is renumbered 1..N when the file's numbers are absent/zero or collide
   (e.g. a `4` and a `4.5` light/dark pair). All note/temperature times are read as
   naive wall-clock so they line up with the LI-7810 DATE/TIME.

@@ -125,6 +125,71 @@ def test_semicolon_polish_headers_and_unique_nr(tmp_path: Path) -> None:
     assert [r.light_dark for r in rows] == ["light", "light", "light", "dark"]
 
 
+# The real 2025-09-15 export: verbose English headers with a `Date` and
+# `Type Of Measurement` column we ignore, `Start`/`End` times, `Light or Dark`,
+# a numeric `GPS` plot id, `TEMPERATURA`, and `Other site Info` as the location.
+_VERBOSE_HEADER = [
+    "Nr",
+    "Date",
+    "Start",
+    "End",
+    "Type Of Measurement",
+    "Light or Dark",
+    "GPS",
+    "TEMPERATURA",
+    "Other site Info",
+]
+_VERBOSE_ROWS = [
+    ["1", "15.09.2025", "12:18", "12:24", "Water", "Light", "764", "18.5", "nad tamą"],
+    ["2", "15.09.2025", "13:03", "13:09", "Water", "Dark", "764", "18.5", "nad tamą"],
+]
+
+
+def _write_aligned(path: Path, sep: str) -> None:
+    lines = [sep.join(row) for row in [_VERBOSE_HEADER, *_VERBOSE_ROWS]]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_real_english_verbose_headers_tab(tmp_path: Path) -> None:
+    # Columns must be found by keyword, not by exact alias.
+    f = tmp_path / "notes.txt"
+    _write_aligned(f, "\t")
+    rows = validate_notes(parse_notes(f))
+    assert [r.nr for r in rows] == [1, 2]
+    assert rows[0].start_time == "12:18:00"
+    assert rows[0].stop_time == "12:24:00"
+    assert [r.light_dark for r in rows] == ["light", "dark"]
+    assert rows[0].gps == "764"  # not the TEMPERATURA value
+    assert rows[0].location == "nad tamą"  # from "Other site Info"
+    assert rows[0].flags == []  # complete row: no missing gps/location/time issue
+
+
+def test_real_english_verbose_headers_space_aligned(tmp_path: Path) -> None:
+    # Same export saved space-aligned (columns separated by 4 spaces); verbose
+    # headers and the "nad tamą" value keep their single internal spaces.
+    f = tmp_path / "notes.txt"
+    _write_aligned(f, "    ")
+    rows = validate_notes(parse_notes(f))
+    assert [r.nr for r in rows] == [1, 2]
+    assert rows[0].start_time == "12:18:00"
+    assert [r.light_dark for r in rows] == ["light", "dark"]
+    assert rows[0].gps == "764"
+    assert rows[0].location == "nad tamą"
+
+
+def test_type_of_measurement_not_mistaken_for_light_dark() -> None:
+    from app.parsing.notes import _resolve_columns
+
+    resolved = _resolve_columns(_VERBOSE_HEADER)
+    assert resolved["light_dark"] == "Light or Dark"  # not "Type Of Measurement"
+    assert resolved["location"] == "Other site Info"
+    assert resolved["start"] == "Start"
+    assert resolved["stop"] == "End"
+    assert resolved["gps"] == "GPS"
+    assert "Type Of Measurement" not in resolved.values()
+    assert "Date" not in resolved.values()
+
+
 def test_header_resolution_handles_newlines_and_comment() -> None:
     # A Word table wraps the header cell as "Light\n/dark" (internal newline);
     # it must still resolve, and a "comment" column maps to location.

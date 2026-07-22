@@ -1,7 +1,12 @@
 """Time-window notes parser + validation (deterministic; no LLM).
 
-Handles well-formed CSV / XLSX / DOCX notes with the columns Nr, Start, Stop,
-GPS, light/dark, location (common English + simple Polish header spellings). It
+Handles well-formed CSV / XLSX / DOCX notes and finds the columns it needs
+(Nr, Start, Stop, GPS, light/dark, location) **intelligently** — by exact header
+token *and* by substring keyword, in English and simple Polish — so verbose
+real-world headers resolve without a hard-coded alias (``Start``/``End``,
+``Light or Dark``, ``Other site Info``, …); unrelated columns (``Date``,
+``Type Of Measurement``, ``TEMPERATURA``) are ignored. The delimiter is
+auto-detected (tab / ``;`` / ``,`` / runs of 2+ spaces for aligned exports). It
 normalises clean time formats (``9.38``, ``9:38``, ``09:38:00`` → ``HH:MM:SS``)
 but does **not** try to repair genuinely messy handwriting — that is the smart
 feature's job. Unparseable values are left blank and surfaced by ``validate_notes``.
@@ -22,33 +27,54 @@ GPS_MISSING = "gps_missing"
 UNPARSEABLE_TIME = "unparseable_time"
 LOCATION_MISSING = "location_missing"
 
-# Canonical column -> accepted header spellings (lower-cased, stripped).
-_HEADER_ALIASES: dict[str, set[str]] = {
-    "nr": {"nr", "no", "no.", "lp", "lp.", "spot", "numer", "punkt", "pkt"},
-    "start": {"start", "start_time", "poczatek", "początek", "od"},
-    "stop": {"stop", "stop_time", "end", "koniec", "do"},
-    "gps": {"gps", "coords", "coordinates", "wspolrzedne", "współrzędne"},
-    "light_dark": {
-        "light/dark",
-        "light_dark",
-        "light-dark",
-        "type",
-        "l/d",
-        "chamber",
-        "komora",
-    },
-    "location": {
-        "location",
-        "opis",
-        "miejsce",
-        "lokalizacja",
-        "gdzie",
-        "description",
-        "comment",
-        "comments",
-        "komentarz",
-        "uwagi",
-    },
+# Canonical column -> (exact whole-header tokens, substring keywords), both
+# matched against the header with all whitespace stripped and lower-cased.
+# *Exact* tokens are for short/ambiguous words that must match the whole header
+# (``od``/``do``/``type``/``end``), so they can't fire inside a longer name.
+# *Substring* keywords match anywhere, so a verbose header like ``Light or Dark``
+# or ``Other site Info`` still resolves. Order = resolution priority; each header
+# is claimed by the first field it matches, so specific fields win over the broad
+# location keywords. ``type`` maps to light/dark (a common column name) but only
+# as an exact match, so ``Type Of Measurement`` is left for no field.
+_FIELD_MATCHERS: dict[str, tuple[frozenset[str], tuple[str, ...]]] = {
+    "nr": (
+        frozenset({"nr", "no", "no.", "lp", "lp.", "l.p.", "id", "#"}),
+        ("numer", "punkt", "pkt", "spot"),
+    ),
+    "start": (
+        frozenset({"od"}),
+        ("start", "begin", "poczate", "począte", "from"),
+    ),
+    "stop": (
+        frozenset({"do", "end"}),
+        ("stop", "end", "koniec", "finish"),
+    ),
+    "light_dark": (
+        frozenset({"type", "l/d", "ld"}),
+        ("light", "dark", "chamber", "komora", "jasn", "ciemn"),
+    ),
+    "gps": (
+        frozenset({"gps"}),
+        ("gps", "coord", "wspol", "współ"),
+    ),
+    "location": (
+        frozenset(),
+        (
+            "location",
+            "site",
+            "info",
+            "opis",
+            "miejsce",
+            "lokal",
+            "gdzie",
+            "descr",
+            "comment",
+            "koment",
+            "uwag",
+            "note",
+            "other",
+        ),
+    ),
 }
 
 
@@ -129,6 +155,17 @@ def _read_csv_autodetect(path: str | Path) -> pd.DataFrame:
             continue
         if frame.shape[1] > 1:
             return frame
+    # Space-aligned (fixed-width-ish) notes: split on runs of 2+ spaces so verbose
+    # headers ("Type Of Measurement") and values ("nad tamą") keep their single
+    # internal spaces instead of being torn into separate columns.
+    try:
+        frame = pd.read_csv(
+            path, dtype=str, keep_default_na=False, sep=r"\s{2,}", engine="python"
+        )
+        if frame.shape[1] > 1:
+            return frame
+    except ValueError:
+        pass
     return pd.read_csv(
         path, dtype=str, keep_default_na=False, sep=None, engine="python"
     )
@@ -153,16 +190,26 @@ def _read_docx_table(path: str | Path) -> list[dict[str, str]]:
 def _resolve_columns(headers: list[str]) -> dict[str, str]:
     """Map each canonical field to the actual header present in the file.
 
-    Header cells may contain internal whitespace/newlines (a Word table can wrap
-    ``Light/dark`` as ``"Light\\n/dark"``), so all whitespace is stripped before
-    matching — otherwise the light/dark column silently fails to resolve.
+    Matching is by exact whole-header token *and* by substring keyword (see
+    ``_FIELD_MATCHERS``), so verbose real-world headers resolve without an exact
+    alias: ``Start``/``End`` → start/stop, ``Light or Dark`` → light/dark,
+    ``Other site Info`` → location, ``GPS`` → gps, while ``Type Of Measurement``
+    (only an exact ``type`` counts) and ``Date``/``TEMPERATURA`` stay unmapped.
+    All whitespace/newlines are stripped first (a Word table can wrap a cell as
+    ``"Light\\n/dark"``). Fields resolve in priority order and each header is
+    claimed once, so specific fields win over the broad location keywords.
     """
     resolved: dict[str, str] = {}
-    for header in headers:
-        key = re.sub(r"\s+", "", header).lower()
-        for canonical, aliases in _HEADER_ALIASES.items():
-            if key in aliases:
+    claimed: set[str] = set()
+    for canonical, (exact, keywords) in _FIELD_MATCHERS.items():
+        for header in headers:
+            if header in claimed:
+                continue
+            key = re.sub(r"\s+", "", header).lower()
+            if key in exact or any(kw in key for kw in keywords):
                 resolved[canonical] = header
+                claimed.add(header)
+                break
     return resolved
 
 
