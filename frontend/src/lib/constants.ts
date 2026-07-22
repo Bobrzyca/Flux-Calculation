@@ -20,7 +20,7 @@ export type StepName = (typeof STEPS)[number]
 
 /** Accepted file types per Upload dropzone. */
 export const FILE_ACCEPT = {
-  concentration: '.txt',
+  concentration: '.txt,.xlsx,.xlsm',
   notes: '.docx,.xlsx,.csv,.txt,.tsv',
   temperature: '.xlsx,.csv,.txt',
   pressure: '', // format varies — accept anything

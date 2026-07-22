@@ -200,7 +200,11 @@ export function Upload() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Dropzone
             label="LI-7810 concentration"
-            acceptHint={isRerun ? '.txt — leave empty to keep current' : '.txt'}
+            acceptHint={
+              isRerun
+                ? '.txt / .xlsx — leave empty to keep current'
+                : '.txt or .xlsx'
+            }
             accept={FILE_ACCEPT.concentration}
             file={files.concentration}
             onChange={setFile('concentration')}

@@ -180,7 +180,19 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
   matching timeline is built from the local `DATE`+`TIME` columns when present**, not
   the `SECONDS` column — real exports put true-unix in `SECONDS` (a different
   timezone from the field notes), so using it would misalign matching by the UTC
-  offset. Falls back to `SECONDS` only when DATE/TIME are absent.
+  offset. Falls back to `SECONDS` only when DATE/TIME are absent (or when Excel
+  re-cast the DATE/TIME cells so none parse).
+  - **Encoding + Excel tolerance:** the text reader tries `utf-8-sig`, then Polish
+    Windows `cp1250`, then `latin-1` (and honours a UTF-16 BOM) — so a Windows
+    export with non-ASCII preamble bytes (`°C`, a Polish site name) or a legacy
+    code page no longer raises `UnicodeDecodeError` and gets wrongly rejected as
+    "not a LI-7810 export"; the header/columns/numbers we use are ASCII, so any
+    encoding decodes them identically. Both `looks_like_li7810` and `parse_li7810`
+    also accept the same layout saved as **`.xlsx`/`.xlsm`** (openpyxl; sniffed by
+    suffix or ZIP magic) — the "open the .txt in Excel and Save As" file — reading
+    it header-less, finding the header row by name, and re-keying the data. Legacy
+    `.xls` is not supported (no `xlrd` dependency). The frontend concentration
+    dropzone accepts `.txt,.xlsx,.xlsm` accordingly.
 - `temperature.py` reads `.xlsx`/`.csv`/`.txt`, auto-detects tab/`;`/`,` delimiters,
   resolves the date and temperature columns flexibly (e.g. `Temp(°C)`), and parses
   **day-first** dotted dates (`DD.MM.YYYY HH:MM`). Unreadable → clean `ValueError`.

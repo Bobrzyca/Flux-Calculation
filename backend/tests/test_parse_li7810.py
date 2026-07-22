@@ -217,6 +217,88 @@ def test_garbage_ch4_dropped_regardless_of_diag(tmp_path: Path) -> None:
     assert df["co2_ppm"].notna().all()
 
 
+def test_parse_non_utf8_windows_encoding(tmp_path: Path) -> None:
+    # Real LI-7810 exports off a Windows machine are often saved in a legacy
+    # code page (cp1250 in Poland), not UTF-8, and the metadata preamble may
+    # carry non-ASCII bytes (e.g. a "°C" unit or a Polish site name) BEFORE the
+    # DATAH header. Opening strictly as UTF-8 then raised UnicodeDecodeError and
+    # the file was wrongly rejected as "not a LI-7810 export". It must parse.
+    f = tmp_path / "windows.txt"
+    f.write_bytes(
+        (
+            "Model:\tLI-7810\n"
+            "System Name:\tKampinos Łąka (30 °C)\n"  # ł + ° -> non-ASCII
+            "DATAH\tSECONDS\tDIAG\tCO2\tCH4\n"
+            "DATA\t1782985020\t0\t420.0\t1990.0\n"
+            "DATA\t1782985021\t0\t421.0\t1991.0\n"
+        ).encode("cp1250")
+    )
+    assert looks_like_li7810(f) is True
+    df = parse_li7810(f)
+    assert list(df.columns) == ["timestamp", "co2_ppm", "ch4_ppb"]
+    assert df["co2_ppm"].iloc[0] == 420.0
+    assert df["ch4_ppb"].iloc[1] == 1991.0
+
+
+def test_parse_utf16_encoding(tmp_path: Path) -> None:
+    # Some Windows tools save the export as UTF-16; strict UTF-8 rejected it.
+    f = tmp_path / "utf16.txt"
+    f.write_bytes(
+        (
+            "Model:\tLI-7810\n"
+            "SECONDS\tCO2\tCH4\n"
+            "1782985020\t420.0\t1990.0\n"
+            "1782985021\t421.0\t1991.0\n"
+        ).encode("utf-16")
+    )
+    assert looks_like_li7810(f) is True
+    df = parse_li7810(f)
+    assert df["co2_ppm"].iloc[0] == 420.0
+    assert df["ch4_ppb"].iloc[1] == 1991.0
+
+
+def _write_li7810_xlsx(path: Path) -> None:
+    """Write a LI-7810-style export as .xlsx (DATAH/DATAU markers, DATE+TIME)."""
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    rows = [
+        ["Model:", "LI-7810"],
+        ["SN:", "TG10-02218"],
+        ["DATAH", "SECONDS", "DIAG", "DATE", "TIME", "CO2", "CH4"],
+        ["DATAU", "secs", "diag", "date", "time", "ppm", "ppb"],
+        ["DATA", 1782985020, 0, "2026-10-06", "09:11:00", 420.5, 1990.1],
+        ["DATA", 1782985021, 0, "2026-10-06", "09:11:01", 421.0, 1991.0],
+        ["DATA", 1782985022, 0, "2026-10-06", "09:11:02", 421.5, 1992.0],
+    ]
+    for row in rows:
+        ws.append(row)
+    wb.save(path)
+
+
+def test_looks_like_and_parses_excel_export(tmp_path: Path) -> None:
+    # The user can also hand the app the LI-7810 record saved as an Excel
+    # workbook (they open the .txt in Excel and "Save As .xlsx"). It must be
+    # accepted and parsed the same as the text export.
+    f = tmp_path / "licor.xlsx"
+    _write_li7810_xlsx(f)
+    assert looks_like_li7810(f) is True
+    df = parse_li7810(f)
+    assert list(df.columns) == ["timestamp", "co2_ppm", "ch4_ppb"]
+    assert len(df) == 3  # DATAU units row dropped
+    # Timeline from DATE+TIME (local wall-clock), aligning with the field notes.
+    assert df["timestamp"].iloc[0] == note_time_to_unix(date(2026, 10, 6), "09:11:00")
+    assert df["co2_ppm"].iloc[0] == 420.5
+    assert df["ch4_ppb"].iloc[2] == 1992.0
+
+
+def test_excel_without_required_columns_rejected() -> None:
+    # A binary xlsx that isn't a LI-7810 export (no SECONDS/CO2/CH4) is rejected
+    # cleanly, not parsed. The temperature workbook is exactly such a file.
+    assert looks_like_li7810(TEMPERATURE) is False
+
+
 def test_gross_negative_co2_dropped(tmp_path: Path) -> None:
     # CO2 < -1500 ppm are gross sensor faults / error sentinels -> dropped (nan).
     f = tmp_path / "lo.txt"
