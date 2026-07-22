@@ -19,6 +19,7 @@ from app.matching.match import note_time_to_unix, parse_note_time
 from app.matching.timeshift import apply_offset
 from app.parsing.li7810 import parse_li7810
 from app.schemas.results import (
+    ContextPoint,
     FitWindow,
     FluxLadder,
     GasDetail,
@@ -285,7 +286,11 @@ def get_results(
 
 
 def _gas_detail(
-    gas: str, readings: list[Reading], result: GasResult, t0: float
+    gas: str,
+    readings: list[Reading],
+    result: GasResult,
+    t0: float,
+    context: list[ContextPoint] | None = None,
 ) -> GasDetail:
     attr, unit = _GAS_META[gas]
     points: list[GasPoint] = []
@@ -298,7 +303,7 @@ def _gas_detail(
             GasPoint(
                 t_s=rel,
                 value=value,
-                in_window=result.fit_start_s <= rel < result.fit_stop_s,
+                in_window=result.window_lo_s <= rel < result.window_hi_s,
             )
         )
 
@@ -346,7 +351,45 @@ def _gas_detail(
             Mg_ha_year=0.0,
             Mg_ha_year_co2equiv=0.0,
         )
-    return GasDetail(unit=unit, points=points, fit=fit, flux_ladder=flux_ladder)
+    return GasDetail(
+        unit=unit,
+        points=points,
+        fit=fit,
+        flux_ladder=flux_ladder,
+        context=context or [],
+    )
+
+
+def _spot_context(
+    analysis: Analysis, t0: float, t_last: float
+) -> dict[str, list[ContextPoint]]:
+    """Faint wider raw record around a spot, per gas (display-only, t_s from t0).
+
+    Re-parses the stored LI-7810 file (offset applied, so it aligns with the
+    persisted readings) and keeps points from ``SPOT_CONTEXT_EXTRA_SECONDS`` before
+    the spot's first reading to the same after its last — a broader view than the
+    stored window so a manual shift can be judged against surrounding data. A
+    missing/unreadable file degrades to empty context (the fit still renders).
+    """
+    context: dict[str, list[ContextPoint]] = {gas: [] for gas in GAS_COLUMN}
+    conc_path = storage.find_stored(analysis.id, "concentration")
+    if conc_path is None:
+        return context
+    try:
+        raw = apply_offset(parse_li7810(conc_path), analysis.time_offset_seconds)
+    except ValueError, OSError:
+        return context
+    lo = t0 - C.SPOT_CONTEXT_EXTRA_SECONDS
+    hi = t_last + C.SPOT_CONTEXT_EXTRA_SECONDS
+    window = raw[(raw["timestamp"] >= lo) & (raw["timestamp"] <= hi)]
+    for gas in GAS_COLUMN:
+        attr = _GAS_META[gas][0]
+        context[gas] = [
+            ContextPoint(t_s=float(row.timestamp) - t0, value=float(value))
+            for row in window.itertuples(index=False)
+            if not pd.isna(value := getattr(row, attr))
+        ]
+    return context
 
 
 def _build_spot_detail(
@@ -366,7 +409,11 @@ def _build_spot_detail(
         return None  # skipped spot / no computable detail
 
     t0 = readings[0].timestamp
-    gases = {gas: _gas_detail(gas, readings, fits[gas], t0) for gas in GAS_COLUMN}
+    context = _spot_context(analysis, t0, readings[-1].timestamp)
+    gases = {
+        gas: _gas_detail(gas, readings, fits[gas], t0, context[gas])
+        for gas in GAS_COLUMN
+    }
     # Both gases share one chosen window per spot; use its real bounds (which may
     # be shortened, manual, or the whole recording in full mode) for the header.
     co2 = fits["CO2"]
@@ -515,8 +562,10 @@ def get_timeseries(
         for gas in GAS_COLUMN:
             attr = _GAS_META[gas][0]
             gr = fits[gas] if fits else None
-            lo = gr.fit_start_s if gr else None
-            hi = gr.fit_stop_s if gr else None
+            # t0-relative window bounds (same frame as r.timestamp - t0), so the
+            # in-window highlight and fit line stay put when a lead margin exists.
+            lo = gr.window_lo_s if gr else None
+            hi = gr.window_hi_s if gr else None
             points = [
                 TSPoint(
                     t_unix=r.timestamp,
@@ -569,13 +618,32 @@ def _timeseries_background(
         return background
     for gas in GAS_COLUMN:
         attr = _GAS_META[gas][0]
-        background[gas] = [
+        points = [
             TSPoint(t_unix=t, value=float(value), in_window=False)
             for row in raw.itertuples(index=False)
             if (t := float(row.timestamp)) not in covered
             and not pd.isna(value := getattr(row, attr))
         ]
+        background[gas] = _downsample(points, C.TIMESERIES_MAX_BACKGROUND_POINTS)
     return background
+
+
+def _downsample(points: list[TSPoint], cap: int) -> list[TSPoint]:
+    """Uniformly thin ``points`` to at most ``cap`` (keeps the last point).
+
+    The overview graph's background is the whole raw record — thousands of points
+    that make Plotly stutter. Rendering every one adds no visible detail at that
+    zoom, so we keep every k-th point (plus the last, so the trace still spans the
+    full record). Zooming re-fetches nothing, but the shape is preserved.
+    """
+    n = len(points)
+    if n <= cap:
+        return points
+    step = (n + cap - 1) // cap  # ceil(n / cap)
+    thinned = points[::step]
+    if thinned[-1] is not points[-1]:
+        thinned.append(points[-1])
+    return thinned
 
 
 @router.get("/analyses/{analysis_id}/log", response_model=list[LogEntry])

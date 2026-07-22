@@ -115,8 +115,10 @@ suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile
   n8n is deferred (`# TODO: n8n quality check`).
 - `GET /api/analyses/{id}/spots/{nr}?fit_mode=auto|full` → `SpotDetail` (per-gas
   points with `in_window`, fit incl. `n_dropped_nan` + `n_spikes`, `fit_window`,
-  flux ladder) plus the fit meta `mode`, `fit_offset_s`, `fit_window_s`,
-  `window_shortened`. **`fit_mode`** (default `auto`) selects the best/shortened
+  flux ladder, **plus `context`** — a faint wider raw record `SPOT_CONTEXT_EXTRA_SECONDS`
+  before/after the stored window, re-parsed from the LI file, display-only, so the
+  manual-shift control has visible surroundings) plus the fit meta `mode`,
+  `fit_offset_s`, `fit_window_s`, `window_shortened`. **`fit_mode`** (default `auto`) selects the best/shortened
   window; **`full`** fits the whole recorded window as-is (no window search) — the
   "use the file's time series without fitting" view. A saved manual offset on the
   spot overrides both (`mode="manual"`). `null` for a skipped spot, 404 if the spot
@@ -134,9 +136,10 @@ suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile
   every computed spot's points on the absolute time axis with `in_window`, the
   fit-line endpoints, **and `background`** — the rest of the raw concentration
   record not assigned to any spot, re-parsed from the stored LI-7810 file with the
-  analysis offset applied, so the overview graph shows the **complete** record. A
-  missing/unreadable stored file degrades to an empty `background`). 422
-  (`bad_fit_mode`) on an unknown `fit_mode`.
+  analysis offset applied, so the overview graph shows the **complete** record —
+  **uniformly downsampled to `TIMESERIES_MAX_BACKGROUND_POINTS`** so a long campaign
+  doesn't make Plotly stutter. A missing/unreadable stored file degrades to an empty
+  `background`). 422 (`bad_fit_mode`) on an unknown `fit_mode`.
 - `GET /api/analyses/{id}/log` → the `ProcessingLogEntry` rows in order.
 - Read endpoints recompute per-spot fits from the persisted `Reading` rows via the
   same `fit_spot` pipeline (one code path); `FluxResult` stays the durable record

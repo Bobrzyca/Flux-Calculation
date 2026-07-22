@@ -35,7 +35,14 @@ was shortened to recover R², and the per-gas isolated-spike drop count
 `background` — the raw concentration points not assigned to any spot —
 and `TimeSeriesPlot` draws them as a faint trace in the all-spots view (skipped
 in single-spot view so the axis stays zoomed to the spot), so no part of the
-LI-7810 record silently disappears from the graph.
+LI-7810 record silently disappears from the graph. The backend **downsamples**
+`background` (uniform thinning to a cap) so long campaigns don't make Plotly
+stutter; all traces already render via `scattergl` (WebGL).
+
+**Per-spot shift context:** `GasDetail.context` (optional) is a wider slice of the
+raw record around the spot; `RegressionPlot` draws it as a faint "Surrounding
+record" trace behind the spot's own points, so the manual-shift control shows far
+more than the fit window and it's easy to see where to move it.
 
 **Manual per-spot shift:** `SpotDetail` has a "Manual fit window" control (−30/−5/+5/
 +30 s nudges + a seconds input + Apply / Reset to auto) that calls

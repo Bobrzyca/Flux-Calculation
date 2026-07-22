@@ -124,6 +124,12 @@ export interface GasPoint {
   in_window: boolean
 }
 
+/** A faint wider-context raw point around a spot (display-only). */
+export interface ContextPoint {
+  t_s: number
+  value: number
+}
+
 export interface GasFit {
   slope: number
   intercept: number
@@ -145,6 +151,8 @@ export interface GasDetail {
   points: GasPoint[]
   fit: GasFit
   flux_ladder: FluxLadder
+  /** Wider raw record around the spot, drawn faintly for shift context. */
+  context?: ContextPoint[]
 }
 
 export interface SpotDetail {

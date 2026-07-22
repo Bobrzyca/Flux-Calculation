@@ -36,6 +36,18 @@ DEFAULT_PRESSURE_HPA = 1013.25
 FIT_SKIP_SECONDS = 30
 FIT_WINDOW_SECONDS = 300
 FIT_SEARCH_MAX_OFFSET_SECONDS = 180
+# Extra seconds of raw record shown on EACH side of a spot's stored window in the
+# per-spot detail plot (a faint context trace), so the researcher can see well
+# beyond the fit window when judging a manual shift. This is display-only — it does
+# not change the stored readings or the fit.
+SPOT_CONTEXT_EXTRA_SECONDS = 300
+
+# Cap on the overview graph's background trace (the whole raw record minus the
+# spot slices). Beyond this the record is uniformly thinned, so Plotly stays
+# responsive on long campaigns instead of stuttering on tens of thousands of
+# points; the thinned shape is indistinguishable at overview zoom.
+TIMESERIES_MAX_BACKGROUND_POINTS = 2000
+
 # How far *before* the recorded start the fitter may also look (and the user may
 # shift the window). Hand-recorded start times are often late, or the instrument
 # clock runs ahead, so the real chamber-closure rise can sit earlier than the

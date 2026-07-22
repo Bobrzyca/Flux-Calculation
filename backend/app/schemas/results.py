@@ -60,6 +60,13 @@ class GasPoint(BaseModel):
     in_window: bool
 
 
+class ContextPoint(BaseModel):
+    """A raw record point shown as faint context around a spot (display-only)."""
+
+    t_s: float
+    value: float
+
+
 class GasFit(BaseModel):
     slope: float
     intercept: float
@@ -88,6 +95,9 @@ class GasDetail(BaseModel):
     points: list[GasPoint]
     fit: GasFit
     flux_ladder: FluxLadder
+    # Faint, wider raw record around the spot (display-only), so the shift control
+    # has visible context beyond the fitted window. Empty if the file is missing.
+    context: list[ContextPoint] = Field(default_factory=list)
 
 
 class FitWindow(BaseModel):

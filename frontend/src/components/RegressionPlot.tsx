@@ -39,7 +39,22 @@ export function RegressionPlot({
       detail.fit.intercept + detail.fit.slope * we,
     ]
 
+    // Wider raw record around the spot (display-only) drawn faintly behind the
+    // spot's own points, so there's visible context when nudging the window.
+    const context = detail.context ?? []
+    const spotTs = new Set(detail.points.map((p) => p.t_s))
+    const ctx = context.filter((p) => !spotTs.has(p.t_s))
+
     const traces: Data[] = [
+      {
+        x: ctx.map((p) => p.t_s),
+        y: ctx.map((p) => p.value),
+        mode: 'markers',
+        type: 'scattergl',
+        name: 'Surrounding record',
+        marker: { color: VIZ.muted, size: 3, opacity: 0.25 },
+        hovertemplate: '%{x}s: %{y}<extra>context</extra>',
+      },
       {
         x: outWin.map((p) => p.t_s),
         y: outWin.map((p) => p.value),

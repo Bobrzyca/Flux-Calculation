@@ -60,6 +60,13 @@ class GasResult:
     fit_stop_s: float = float(C.FIT_SKIP_SECONDS + C.FIT_WINDOW_SECONDS)
     fit_window_s: float = float(C.FIT_WINDOW_SECONDS)
     window_shortened: bool = False
+    # The actual fit-window bounds in **seconds from the first reading** (t0),
+    # i.e. the same frame as a plotted point's ``timestamp - t0``. Unlike
+    # ``fit_start_s``/``fit_stop_s`` (reported relative to the recorded start and
+    # possibly negative), these are what ``in_window`` shading and the fit-line
+    # endpoints must use, so a lead margin doesn't shift them.
+    window_lo_s: float = float(C.FIT_SKIP_SECONDS)
+    window_hi_s: float = float(C.FIT_SKIP_SECONDS + C.FIT_WINDOW_SECONDS)
     # Isolated single-point spikes dropped from this gas within the fit window.
     n_spikes: int = 0
     # Temperature over the fit window: mean is used in the flux formula; min/max
@@ -317,6 +324,8 @@ def fit_spot(
             fit_start_s=start_report,
             fit_stop_s=stop_report,
             fit_window_s=win,
+            window_lo_s=lo,
+            window_hi_s=hi,
             window_shortened=shortened,
             n_spikes=n_spikes,
             temp_mean_c=temp_mean,
