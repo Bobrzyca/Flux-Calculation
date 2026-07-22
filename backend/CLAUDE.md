@@ -197,15 +197,21 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
     it header-less, finding the header row by name, and re-keying the data. Legacy
     `.xls` is not supported (no `xlrd` dependency). The frontend concentration
     dropzone accepts `.txt,.xlsx,.xlsm` accordingly.
-- `temperature.py` reads `.xlsx`/`.csv`/`.txt`, auto-detects tab/`;`/`,` delimiters
-  (plus a **2+-space** fallback for space-aligned/fixed-width exports, which keeps
-  the single space inside a `YYYY-MM-DD HH:MM:SS` datetime intact), resolves the
-  date and temperature columns flexibly (e.g. `Temp(°C)`, ignoring extra
-  Status/Type/CO2/RH columns). Dates use the **same separator rule as `li7810.py`**:
-  dotted `DD.MM.YYYY` is day-first, dashed ISO `YYYY-MM-DD` (with or without a time)
-  is year-first — forcing day-first on ISO would flip e.g. `2025-10-06` to 10 June
-  and it would never line up with the concentration record. Unparseable → clean
-  `ValueError`.
+- `temperature.py` reads `.xlsx`/`.csv`/`.txt` and is **format-agnostic** — it
+  resolves which column is which by name *and* by content, so a new logger export
+  doesn't need a code change. Delimiters: tab/`;`/`,` plus a **2+-space** fallback
+  for space-aligned/fixed-width exports (keeps the single space inside a
+  `YYYY-MM-DD HH:MM:SS` datetime intact). Temperature column: exact aliases, then any
+  header containing `temp`/`°C`/`(c)` (ignoring extra Status/Type/CO2/RH columns).
+  Date/time: the date + time may be in **one combined column** or **two separate
+  columns** (English `Date`/`Time`, Polish `Data`+`Godzina`/`Czas`) — separate
+  columns are recombined, and an Excel date-only cell's `00:00:00` tail is stripped
+  so a separate time attaches. The **day/month/year order is inferred from the
+  values**: a 4-digit leading part → ISO year-first (`2025-10-06`); a part > 12 →
+  fixes the day (day-first `13.10.2025`) or the month (US `10/13/2025`); ambiguous →
+  European day-first. When headers are unrecognised it falls back to the column that
+  parses as the most datetimes. Unreadable / no date / no temp column → clean
+  `ValueError` (→ 422).
 - `notes.py` auto-detects the delimiter for `.csv`/`.txt`/`.tsv` (tab/`;`/`,`);
   **normalises header whitespace** (a Word table cell may wrap `Light/dark` as
   `"Light\n/dark"` — the newline must not break resolution); recognises Polish

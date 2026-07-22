@@ -102,6 +102,122 @@ def test_parse_temperature_space_aligned_columns(tmp_path: Path) -> None:
     assert df["timestamp"].iloc[0] == expected
 
 
+def test_parse_temperature_separate_date_and_time_columns(tmp_path: Path) -> None:
+    # Date and time in TWO separate columns (ISO date). They must be combined,
+    # not have one silently ignored.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.csv"
+    f.write_text(
+        "Date\tTime\tTemp(°C)\tRH(%)\n"
+        "2025-10-06\t09:22:20\t13.35\t93.25\n"
+        "2025-10-06\t09:22:50\t13.48\t94.33\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [13.35, 13.48]
+    assert (
+        df["timestamp"].iloc[0]
+        == datetime(2025, 10, 6, 9, 22, 20, tzinfo=UTC).timestamp()
+    )
+    assert df["timestamp"].diff().dropna().iloc[0] == 30.0
+
+
+def test_parse_temperature_separate_polish_columns_dotted(tmp_path: Path) -> None:
+    # Polish headers with a separate day-first dotted Data + Godzina.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.csv"
+    f.write_text(
+        "Data;Godzina;Temperatura\n"
+        "06.10.2025;09:22:20;13.35\n"
+        "06.10.2025;09:22:50;13.48\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [13.35, 13.48]
+    # 06.10.2025 is 6 October (day-first), not 10 June.
+    assert (
+        df["timestamp"].iloc[0]
+        == datetime(2025, 10, 6, 9, 22, 20, tzinfo=UTC).timestamp()
+    )
+
+
+def test_parse_temperature_dayfirst_inferred_from_values(tmp_path: Path) -> None:
+    # A leading component > 12 proves the day comes first even though the file is
+    # dotted; 13.10.2025 can only be 13 October.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.csv"
+    f.write_text(
+        "Date,Temp\n13.10.2025 09:00,10.0\n13.10.2025 09:01,10.1\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert (
+        df["timestamp"].iloc[0] == datetime(2025, 10, 13, 9, 0, tzinfo=UTC).timestamp()
+    )
+
+
+def test_parse_temperature_us_month_first_inferred(tmp_path: Path) -> None:
+    # A second component > 12 proves month-first (US MM/DD/YYYY): 10/13/2025 is
+    # 13 October, so the parser must NOT read it day-first.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.csv"
+    f.write_text(
+        "Date,Temp\n10/13/2025 09:00,10.0\n10/13/2025 09:01,10.1\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert (
+        df["timestamp"].iloc[0] == datetime(2025, 10, 13, 9, 0, tzinfo=UTC).timestamp()
+    )
+
+
+def test_parse_temperature_unfamiliar_headers_content_fallback(tmp_path: Path) -> None:
+    # Headers we don't recognise by name: fall back to the column whose values
+    # actually parse as datetimes, and to the °C column for temperature.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.csv"
+    f.write_text(
+        "idx,Znacznik,Odczyt [°C]\n"
+        "1,2025-10-06 09:22:20,13.35\n"
+        "2,2025-10-06 09:22:50,13.48\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [13.35, 13.48]
+    assert (
+        df["timestamp"].iloc[0]
+        == datetime(2025, 10, 6, 9, 22, 20, tzinfo=UTC).timestamp()
+    )
+
+
+def test_parse_temperature_separate_columns_xlsx(tmp_path: Path) -> None:
+    # Excel with a date-only Date column (round-trips to midnight) and a separate
+    # Time column: the midnight tail must be stripped and the real time attached.
+    from datetime import UTC, datetime
+    from datetime import time as dtime
+
+    import openpyxl
+
+    f = tmp_path / "temp.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Date", "Time", "Temp"])
+    ws.append([datetime(2025, 10, 6), dtime(9, 22, 20), 13.35])
+    ws.append([datetime(2025, 10, 6), dtime(9, 22, 50), 13.48])
+    wb.save(f)
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [13.35, 13.48]
+    assert (
+        df["timestamp"].iloc[0]
+        == datetime(2025, 10, 6, 9, 22, 20, tzinfo=UTC).timestamp()
+    )
+
+
 def test_parse_temperature_bad_file_raises_valueerror(tmp_path: Path) -> None:
     # A file that is neither a readable spreadsheet nor a parseable table
     # raises a clear ValueError (the API turns this into a 422, not a 500).
