@@ -197,9 +197,15 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
     it header-less, finding the header row by name, and re-keying the data. Legacy
     `.xls` is not supported (no `xlrd` dependency). The frontend concentration
     dropzone accepts `.txt,.xlsx,.xlsm` accordingly.
-- `temperature.py` reads `.xlsx`/`.csv`/`.txt`, auto-detects tab/`;`/`,` delimiters,
-  resolves the date and temperature columns flexibly (e.g. `Temp(°C)`), and parses
-  **day-first** dotted dates (`DD.MM.YYYY HH:MM`). Unreadable → clean `ValueError`.
+- `temperature.py` reads `.xlsx`/`.csv`/`.txt`, auto-detects tab/`;`/`,` delimiters
+  (plus a **2+-space** fallback for space-aligned/fixed-width exports, which keeps
+  the single space inside a `YYYY-MM-DD HH:MM:SS` datetime intact), resolves the
+  date and temperature columns flexibly (e.g. `Temp(°C)`, ignoring extra
+  Status/Type/CO2/RH columns). Dates use the **same separator rule as `li7810.py`**:
+  dotted `DD.MM.YYYY` is day-first, dashed ISO `YYYY-MM-DD` (with or without a time)
+  is year-first — forcing day-first on ISO would flip e.g. `2025-10-06` to 10 June
+  and it would never line up with the concentration record. Unparseable → clean
+  `ValueError`.
 - `notes.py` auto-detects the delimiter for `.csv`/`.txt`/`.tsv` (tab/`;`/`,`);
   **normalises header whitespace** (a Word table cell may wrap `Light/dark` as
   `"Light\n/dark"` — the newline must not break resolution); recognises Polish

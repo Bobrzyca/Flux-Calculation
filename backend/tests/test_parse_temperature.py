@@ -62,6 +62,46 @@ def test_parse_temperature_real_tab_delimited_format(tmp_path: Path) -> None:
     assert df["timestamp"].diff().dropna().iloc[0] == 60.0
 
 
+def test_parse_temperature_iso_datetime_not_flipped(tmp_path: Path) -> None:
+    # The real 2025-10-06 logger export: TAB-delimited, a single `Date` column
+    # holding an ISO `YYYY-MM-DD HH:MM:SS` datetime, plus columns we ignore.
+    # Parsing it day-first would flip 2025-10-06 to 10 June and it would never
+    # line up with the concentration record — so ISO dates must stay year-first.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.txt"
+    f.write_text(
+        "Date\tStatus\tType\tCO2(ppm)\tTemp(°C)\tRH(%)\n"
+        "2025-10-06 09:22:20\t0x00\tData\t417\t13.35\t93.25\n"
+        "2025-10-06 09:22:50\t0x00\tData\t420\t13.48\t94.33\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [13.35, 13.48]
+    expected = datetime(2025, 10, 6, 9, 22, 20, tzinfo=UTC).timestamp()
+    assert df["timestamp"].iloc[0] == expected
+    assert df["timestamp"].diff().dropna().iloc[0] == 30.0
+
+
+def test_parse_temperature_space_aligned_columns(tmp_path: Path) -> None:
+    # Some loggers export space-aligned (fixed-width-ish) columns rather than
+    # tab/comma. Columns are separated by runs of 2+ spaces, while the datetime
+    # keeps its single internal space — so the date must not get split off.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.txt"
+    f.write_text(
+        "Date                   Status    Type      CO2(ppm)    Temp(°C)    RH(%)\n"
+        "2025-10-06 09:22:20    0x00      Data      417         13.35       93.25\n"
+        "2025-10-06 09:22:50    0x00      Data      420         13.48       94.33\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [13.35, 13.48]
+    expected = datetime(2025, 10, 6, 9, 22, 20, tzinfo=UTC).timestamp()
+    assert df["timestamp"].iloc[0] == expected
+
+
 def test_parse_temperature_bad_file_raises_valueerror(tmp_path: Path) -> None:
     # A file that is neither a readable spreadsheet nor a parseable table
     # raises a clear ValueError (the API turns this into a 422, not a 500).

@@ -57,6 +57,15 @@ def _read_csv(path: str | Path) -> pd.DataFrame:
             continue
         if frame.shape[1] > 1:
             return frame
+    # Space-aligned (fixed-width-ish) exports: split on runs of 2+ spaces so the
+    # single space inside a "YYYY-MM-DD HH:MM:SS" datetime is preserved (a plain
+    # single-space split would tear the date off the time).
+    try:
+        frame = pd.read_csv(path, sep=r"\s{2,}", engine="python")
+        if frame.shape[1] > 1:
+            return frame
+    except ValueError:
+        pass
     # Last resort: let pandas sniff the delimiter itself.
     return pd.read_csv(path, sep=None, engine="python")
 
@@ -89,9 +98,18 @@ def parse_temperature(path: str | Path) -> pd.DataFrame:
     temp_col = _resolve_column(list(raw.columns), _TEMP_ALIASES, "temp")
 
     # Interpret naive datetimes as UTC wall-clock (matching the LI-7810 local
-    # DATE/TIME timeline and the local-time notes). ``dayfirst`` handles the
-    # European ``DD.MM.YYYY`` dates; unparseable rows become NaT and are dropped.
-    when = pd.to_datetime(raw[time_col], utc=True, dayfirst=True, errors="coerce")
+    # DATE/TIME timeline and the local-time notes). The date format is chosen by
+    # shape: European **dotted** ``DD.MM.YYYY`` is day-first, but **dashed** ISO
+    # ``YYYY-MM-DD`` is year-first — forcing day-first on ISO flips e.g.
+    # 2025-10-06 to 10 June, which then never lines up with the concentration
+    # record. Unparseable rows become NaT and are dropped.
+    time_values = raw[time_col]
+    dotted = bool(
+        time_values.astype(str)
+        .str.contains(r"\d{1,2}\.\d{1,2}\.\d{2,4}", regex=True)
+        .any()
+    )
+    when = pd.to_datetime(time_values, utc=True, dayfirst=dotted, errors="coerce")
     epoch = pd.Timestamp("1970-01-01", tz="UTC")
     out = pd.DataFrame(
         {
