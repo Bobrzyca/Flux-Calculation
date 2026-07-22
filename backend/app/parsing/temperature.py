@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.parsing.encoding import detect_encoding
+
 # Exact header spellings (lower-cased, stripped) that name the temperature column.
 _TEMP_ALIASES = frozenset(
     {"temp", "temperature", "t", "temp_c", "temp (c)", "temperatura", "temp(°c)"}
@@ -75,11 +77,13 @@ def _read_excel(path: str | Path) -> pd.DataFrame:
 
 
 def _read_csv(path: str | Path) -> pd.DataFrame:
-    # Exports are variously tab-, semicolon-, or comma-delimited; pick the
-    # separator that actually splits the file into more than one column.
+    # Sniff the encoding first (Windows exports are often cp1250/UTF-16 and carry
+    # a non-UTF-8 "°C" byte that used to reject the file), then the delimiter:
+    # tab / ; / , / runs of 2+ spaces.
+    encoding = detect_encoding(path)
     for sep in ("\t", ";", ","):
         try:
-            frame = pd.read_csv(path, sep=sep)
+            frame = pd.read_csv(path, sep=sep, encoding=encoding)
         except ValueError:  # pandas ParserError subclasses ValueError
             continue
         if frame.shape[1] > 1:
@@ -88,13 +92,13 @@ def _read_csv(path: str | Path) -> pd.DataFrame:
     # single space inside a "YYYY-MM-DD HH:MM:SS" datetime is preserved (a plain
     # single-space split would tear the date off the time).
     try:
-        frame = pd.read_csv(path, sep=r"\s{2,}", engine="python")
+        frame = pd.read_csv(path, sep=r"\s{2,}", engine="python", encoding=encoding)
         if frame.shape[1] > 1:
             return frame
     except ValueError:
         pass
     # Last resort: let pandas sniff the delimiter itself.
-    return pd.read_csv(path, sep=None, engine="python")
+    return pd.read_csv(path, sep=None, engine="python", encoding=encoding)
 
 
 def _find_by_keys(

@@ -177,6 +177,22 @@ def test_real_english_verbose_headers_space_aligned(tmp_path: Path) -> None:
     assert rows[0].location == "nad tamą"
 
 
+def test_real_notes_cp1250_encoding(tmp_path: Path) -> None:
+    # A Windows export saved in cp1250 (not UTF-8): the site name "nad tamą"
+    # carries byte 0xb9 ('ą'), which used to raise UnicodeDecodeError and reject
+    # the whole file. It must parse, with the accented text preserved.
+    f = tmp_path / "notes.txt"
+    f.write_bytes(
+        ("\t".join(_VERBOSE_HEADER) + "\n" + "\t".join(_VERBOSE_ROWS[0]) + "\n").encode(
+            "cp1250"
+        )
+    )
+    rows = parse_notes(f)
+    assert rows[0].start_time == "12:18:00"
+    assert rows[0].light_dark == "light"
+    assert rows[0].location == "nad tamą"
+
+
 def test_type_of_measurement_not_mistaken_for_light_dark() -> None:
     from app.parsing.notes import _resolve_columns
 

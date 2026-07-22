@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.parsing.encoding import detect_encoding
+
 # The columns the downstream pipeline relies on.
 REQUIRED_COLUMNS = frozenset({"SECONDS", "CO2", "CH4"})
 
@@ -56,15 +58,6 @@ _DIAG_INVALID_MASK = ~0b11111
 # a handful of lines; this bound keeps us from reading a whole huge non-LI file.
 _MAX_HEADER_SCAN = 200
 
-# Text encodings tried in order when reading a LI-7810 .txt export. utf-8-sig
-# strips a BOM if present; cp1250 is the Polish Windows code page (correct for
-# accented site names); latin-1 decodes any byte sequence and so is the
-# guaranteed fallback — a non-LI text file still fails the column check, not the
-# decode. The column names and numbers we rely on are ASCII, so any of these
-# decodes them identically; the choice only affects non-ASCII preamble text we
-# never use.
-_TEXT_ENCODINGS = ("utf-8-sig", "cp1250", "latin-1")
-
 # Workbook formats we can read (openpyxl). Legacy .xls needs xlrd, which isn't a
 # dependency, so it is not accepted.
 _EXCEL_SUFFIXES = frozenset({".xlsx", ".xlsm"})
@@ -93,32 +86,6 @@ def _is_excel(path: str | Path) -> bool:
             return f.read(4) == _ZIP_MAGIC
     except OSError:
         return False
-
-
-def _detect_text_encoding(path: str | Path) -> str | None:
-    """First encoding from ``_TEXT_ENCODINGS`` that decodes the file's head.
-
-    latin-1 never fails, so a readable text file always resolves to some
-    encoding; ``None`` means the file couldn't be opened at all.
-    """
-    try:
-        with open(path, "rb") as f:
-            head = f.read(65536)
-    except OSError:
-        return None
-    # A UTF-16 BOM must be honoured first: those bytes also decode cleanly (as
-    # garbage full of NULs) under latin-1, which would then win and hide the
-    # header. Python's "utf-16" codec reads the byte order from the BOM.
-    if head[:2] in (b"\xff\xfe", b"\xfe\xff"):
-        return "utf-16"
-    for encoding in _TEXT_ENCODINGS:
-        try:
-            head.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-        else:
-            return encoding
-    return None
 
 
 def _find_header_index_text(path: str | Path, encoding: str) -> int | None:
@@ -174,7 +141,7 @@ def _read_excel_raw(path: str | Path) -> pd.DataFrame | None:
 
 def _read_text_raw(path: str | Path) -> pd.DataFrame | None:
     """Read a LI-7810 text export into a frame with proper column names, or None."""
-    encoding = _detect_text_encoding(path)
+    encoding = detect_encoding(path)
     if encoding is None:
         return None
     header_index = _find_header_index_text(path, encoding)

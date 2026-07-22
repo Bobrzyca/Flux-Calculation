@@ -218,6 +218,25 @@ def test_parse_temperature_separate_columns_xlsx(tmp_path: Path) -> None:
     )
 
 
+def test_parse_temperature_cp1250_encoding(tmp_path: Path) -> None:
+    # A Windows export in cp1250: the "°C" unit in the header carries byte 0xb0,
+    # which used to raise UnicodeDecodeError. It must parse.
+    from datetime import UTC, datetime
+
+    f = tmp_path / "temp.txt"
+    f.write_bytes(
+        (
+            "Date\tTemp(°C)\n2025-10-06 09:22:20\t13.35\n2025-10-06 09:22:50\t13.48\n"
+        ).encode("cp1250")
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [13.35, 13.48]
+    assert (
+        df["timestamp"].iloc[0]
+        == datetime(2025, 10, 6, 9, 22, 20, tzinfo=UTC).timestamp()
+    )
+
+
 def test_parse_temperature_bad_file_raises_valueerror(tmp_path: Path) -> None:
     # A file that is neither a readable spreadsheet nor a parseable table
     # raises a clear ValueError (the API turns this into a 422, not a 500).

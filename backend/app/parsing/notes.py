@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.parsing.encoding import detect_encoding
+
 # Flag values mirror the frontend's NoteFlag union.
 STOP_BEFORE_START = "stop_before_start"
 GPS_MISSING = "gps_missing"
@@ -147,10 +149,18 @@ def _read_table(path: str | Path) -> list[dict[str, str]]:
 
 
 def _read_csv_autodetect(path: str | Path) -> pd.DataFrame:
-    """Read a delimited notes file, auto-detecting tab / semicolon / comma."""
+    """Read a delimited notes file, auto-detecting encoding then delimiter.
+
+    Encoding is sniffed first (Windows exports are often cp1250/UTF-16, and a
+    site name like ``nad tamą`` carries the non-UTF-8 byte that used to reject the
+    whole file); delimiter is tab / ``;`` / ``,`` / runs of 2+ spaces.
+    """
+    encoding = detect_encoding(path)
     for sep in ("\t", ";", ","):
         try:
-            frame = pd.read_csv(path, dtype=str, keep_default_na=False, sep=sep)
+            frame = pd.read_csv(
+                path, dtype=str, keep_default_na=False, sep=sep, encoding=encoding
+            )
         except ValueError:  # pandas ParserError subclasses ValueError
             continue
         if frame.shape[1] > 1:
@@ -160,14 +170,24 @@ def _read_csv_autodetect(path: str | Path) -> pd.DataFrame:
     # internal spaces instead of being torn into separate columns.
     try:
         frame = pd.read_csv(
-            path, dtype=str, keep_default_na=False, sep=r"\s{2,}", engine="python"
+            path,
+            dtype=str,
+            keep_default_na=False,
+            sep=r"\s{2,}",
+            engine="python",
+            encoding=encoding,
         )
         if frame.shape[1] > 1:
             return frame
     except ValueError:
         pass
     return pd.read_csv(
-        path, dtype=str, keep_default_na=False, sep=None, engine="python"
+        path,
+        dtype=str,
+        keep_default_na=False,
+        sep=None,
+        engine="python",
+        encoding=encoding,
     )
 
 

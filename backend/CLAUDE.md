@@ -186,8 +186,9 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
   parsed **day-first** to match the temperature loader; dashed `YYYY-MM-DD` (ISO)
   is year-first (forcing day-first on ISO makes pandas flip it to the wrong
   month).
-  - **Encoding + Excel tolerance:** the text reader tries `utf-8-sig`, then Polish
-    Windows `cp1250`, then `latin-1` (and honours a UTF-16 BOM) — so a Windows
+  - **Encoding + Excel tolerance:** the text reader sniffs the encoding via the
+    shared `parsing/encoding.py` (`utf-8-sig`, then Polish Windows `cp1250`, then
+    `latin-1`, and honours a UTF-16 BOM) — so a Windows
     export with non-ASCII preamble bytes (`°C`, a Polish site name) or a legacy
     code page no longer raises `UnicodeDecodeError` and gets wrongly rejected as
     "not a LI-7810 export"; the header/columns/numbers we use are ASCII, so any
@@ -199,7 +200,9 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
     dropzone accepts `.txt,.xlsx,.xlsm` accordingly.
 - `temperature.py` reads `.xlsx`/`.csv`/`.txt` and is **format-agnostic** — it
   resolves which column is which by name *and* by content, so a new logger export
-  doesn't need a code change. Delimiters: tab/`;`/`,` plus a **2+-space** fallback
+  doesn't need a code change. It sniffs the **encoding** (shared
+  `parsing/encoding.py`; a cp1250 `°C` no longer rejects the file). Delimiters:
+  tab/`;`/`,` plus a **2+-space** fallback
   for space-aligned/fixed-width exports (keeps the single space inside a
   `YYYY-MM-DD HH:MM:SS` datetime intact). Temperature column: exact aliases, then any
   header containing `temp`/`°C`/`(c)` (ignoring extra Status/Type/CO2/RH columns).
@@ -212,9 +215,11 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
   European day-first. When headers are unrecognised it falls back to the column that
   parses as the most datetimes. Unreadable / no date / no temp column → clean
   `ValueError` (→ 422).
-- `notes.py` auto-detects the delimiter for `.csv`/`.txt`/`.tsv` (tab/`;`/`,`, plus
-  a **2+-space** fallback for space-aligned exports so verbose headers/values keep
-  their single internal spaces). Columns are resolved **intelligently** by
+- `notes.py` sniffs the **encoding** (shared `parsing/encoding.py`:
+  utf-8-sig/cp1250/latin-1 + UTF-16 BOM — a cp1250 site name like `nad tamą` no
+  longer rejects the file) and auto-detects the delimiter for `.csv`/`.txt`/`.tsv`
+  (tab/`;`/`,`, plus a **2+-space** fallback for space-aligned exports so verbose
+  headers/values keep their single internal spaces). Columns are resolved **intelligently** by
   `_FIELD_MATCHERS` — an exact whole-header token *and* a substring keyword, in
   English + simple Polish — so verbose real headers resolve without a hard-coded
   alias: `Start`/`End` (start/stop), `Light or Dark`/`Chamber`/`Komora`
