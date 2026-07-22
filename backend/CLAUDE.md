@@ -123,11 +123,13 @@ suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile
   doesn't exist, 422 (`bad_fit_mode`) on an unknown `fit_mode`.
 - `PUT /api/analyses/{id}/spots/{nr}/fit` (body `SpotFitUpdate` = `{offset_s: float
   | null}`) — set (or clear with `null`) a spot's **manual fit-window offset**: the
-  per-spot correction for a mis-placed automatic window. Persists
+  per-spot correction for a mis-placed automatic window. `offset_s` is **relative to
+  the recorded start** — positive = later, **negative = earlier** (moves the window
+  into the lead margin of data before the recorded start). Persists
   `Spot.manual_offset_s`, **rewrites that spot's `FluxResult`** so the results table
-  and export follow, logs the change, and returns the recomputed `SpotDetail`. 422
-  (`bad_offset`) if `offset_s` < 0, 404 if the spot doesn't exist. Manual offsets
-  survive a re-`match` (the match step honours them).
+  and export follow, logs the change, and returns the recomputed `SpotDetail`. 404
+  if the spot doesn't exist. Manual offsets survive a re-`match` (the match step
+  honours them).
 - `GET /api/analyses/{id}/timeseries?fit_mode=auto|full` → `Timeseries` (per gas:
   every computed spot's points on the absolute time axis with `in_window`, the
   fit-line endpoints, **and `background`** — the rest of the raw concentration
@@ -242,11 +244,15 @@ start+30 s→+5 min 30 s, nan drop/count, `low_r2`/`short_window` flags), and
 `constants.py` (gas constants, molar masses, GWP, thresholds — the tunable numbers).
 **Fit window:** `fit_spot` no longer uses a fixed offset — it **slides a
 `FIT_WINDOW_SECONDS` window and picks the most-linear position** (max CO₂ R², ties
-broken toward `FIT_SKIP_SECONDS` so clean spots are unchanged), up to
-`FIT_SEARCH_MAX_OFFSET_SECONDS` after the recorded start; the same window is applied
-to both gases and the chosen offset is reported (`fit_offset_s`, logged + shown in
-the per-spot fit window). This absorbs the lag between hand-recorded times and the
-instrument clock (the main cause of spuriously low R²).
+broken toward `FIT_SKIP_SECONDS` so clean spots are unchanged). The search is
+**centred on the recorded start** (the `anchor_ts` passed by the API): it looks from
+`FIT_SEARCH_BACK_SECONDS` *before* to `FIT_SEARCH_MAX_OFFSET_SECONDS` *after* it, so
+it can reach an **earlier** slope when the hand-recorded start is late or the
+instrument clock runs ahead — the main cause of spuriously low R². This needs the
+matcher's lead margin (below); the reported `fit_offset_s` is relative to the
+recorded start and may be **negative** (window sits earlier). The same window is
+applied to both gases and the chosen offset is logged + shown. (With no anchor —
+the pre-lead-margin path — offsets are measured from the first reading, unchanged.)
 **Auto window-shortening:** when the best 5-min window is still below
 `LOW_R2_THRESHOLD`, `fit_spot` may **shorten** it (keeping its best position) down
 to `FIT_SHORTEN_MIN_SECONDS` (4 min) in `FIT_SHORTEN_STEP_SECONDS` steps, adopting a
@@ -274,10 +280,13 @@ fits the entire recorded span as-is (despiking still applies) — surfaced via t
 endpoints (the frontend Results page drives all three from one "Block auto-fit"
 switch).
 **Manual per-spot offset:** `fit_spot(..., manual_offset_s=…)` uses a fixed
-`FIT_WINDOW_SECONDS` window starting at that offset and **overrides** auto/full —
-the saved per-spot correction (`Spot.manual_offset_s`) for a window the auto-fit
-placed wrong. Set/cleared via `PUT …/spots/{nr}/fit`, which rewrites the spot's
-`FluxResult` so results + export follow.
+`FIT_WINDOW_SECONDS` window starting `manual_offset_s` seconds from the recorded
+start — **positive = later, negative = earlier** — and **overrides** auto/full. It
+keeps its full length (shifting never truncates the window, given the lead margin),
+so the researcher can slide it onto the visible slope without cutting the
+measurement. The saved correction (`Spot.manual_offset_s`) is set/cleared via
+`PUT …/spots/{nr}/fit`, which rewrites the spot's `FluxResult` so results + export
+follow.
 **Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`.
 `reference/flux_reference.R` exists but is a **Python-derived scaffold** (so it can't
 independently validate yet) — `# TODO: re-validate` once the real, independent R
@@ -290,8 +299,14 @@ instrument-clock offset to the concentration timestamps) and `match.py`
 work date; `nearest_temperature`/`nearest_pressure`; `match_spot` returns the
 annotated in-window readings, the per-spot temp/pressure, skip reasons — empty
 window / stop-before-start / unparseable time — the `no_pressure` flag, and
-structured `LogMessage`s). Spots are matched independently, so a shared GPS
-(light/dark pair or redo) stays distinct.
+structured `LogMessage`s). **`match_spot` slices a window with a
+`FIT_SEARCH_BACK_SECONDS` lead *before* the recorded start** (plus the forward
+`_SLICE_SECONDS = FIT_WINDOW + FIT_SEARCH_MAX_OFFSET`), so the stored `Reading`
+rows include data on both sides of the recorded start — the raw material the fit
+step's backward search and the user's backward manual shift need. Spots are matched
+independently, so a shared GPS (light/dark pair or redo) stays distinct. **Note:**
+analyses matched before the lead margin existed store no pre-start data — re-run the
+match to shift a spot earlier.
 
 Persistence lives in `app/db/`: `models.py` (SQLModel tables), `session.py` (the
 engine, `get_session` dependency, and `create_db_and_tables`, called from the

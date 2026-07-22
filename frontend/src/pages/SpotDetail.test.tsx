@@ -25,7 +25,7 @@ describe('SpotDetail', () => {
   it('shows how much the fit window was shifted and the spike count', async () => {
     renderDetail('auto')
     expect(
-      await screen.findByText(/Window shifted \+30 s after the recorded start/),
+      await screen.findByText(/Window starts 30 s after the recorded start/),
     ).toBeInTheDocument()
     expect(screen.getByText('Spikes dropped')).toBeInTheDocument()
   })
@@ -42,15 +42,19 @@ describe('SpotDetail', () => {
     renderDetail('auto', () => {
       changed += 1
     })
-    await screen.findByText(/Window shifted/)
+    await screen.findByText(/Window starts/)
 
-    const input = screen.getByLabelText('Fit window start offset (seconds)')
+    const input = screen.getByLabelText(
+      'Fit window start offset (seconds; negative shifts earlier)',
+    )
     await userEvent.clear(input)
     await userEvent.type(input, '75')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
     expect(
-      await screen.findByText(/Manual fit: window starts \+75 s/),
+      await screen.findByText(
+        /Manual fit: window starts 75 s after the recorded start/,
+      ),
     ).toBeInTheDocument()
     expect(changed).toBeGreaterThan(0)
     // Reset-to-auto appears once a manual offset is active.

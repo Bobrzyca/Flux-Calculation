@@ -97,14 +97,18 @@ def slice_from_start(
     work_date: date,
     offset_seconds: float,
     seconds: float,
+    lead_seconds: float = 0.0,
 ) -> pd.DataFrame:
-    """Offset-correct ``readings`` and return a fixed-length window from ``start``.
+    """Offset-correct ``readings`` and return a window around ``start``.
 
-    Returns rows with corrected timestamps in ``[start, start + seconds)``.
+    Returns rows with corrected timestamps in
+    ``[start - lead_seconds, start + seconds)``. The ``lead_seconds`` of data
+    *before* the recorded start let the fit step search — and the user shift —
+    the window to an earlier slope than the hand-recorded start.
     """
     shifted = apply_offset(readings, offset_seconds)
     start_unix = note_time_to_unix(work_date, start)
-    mask = (shifted["timestamp"] >= start_unix) & (
+    mask = (shifted["timestamp"] >= start_unix - lead_seconds) & (
         shifted["timestamp"] < start_unix + seconds
     )
     return shifted[mask].reset_index(drop=True)
@@ -168,11 +172,18 @@ def match_spot(
             logs=[LogMessage("error", f"Spot {nr} skipped: stop before start")],
         )
 
-    # Slice a window that starts at the recorded start and runs long enough for
-    # the fit step to search for the most-linear sub-window (FIT_WINDOW plus the
-    # max search offset), rather than trusting the hand-recorded stop time.
+    # Slice a window around the recorded start: a FIT_SEARCH_BACK_SECONDS lead
+    # *before* it plus a forward span long enough for the fit step to search for
+    # the most-linear sub-window (FIT_WINDOW + max search offset). The lead lets
+    # the fit — and a manual shift — reach an earlier slope when the hand-recorded
+    # start is late; the recorded stop is only used to reject stop-before-start.
     window = slice_from_start(
-        readings, start, work_date, offset_seconds, _SLICE_SECONDS
+        readings,
+        start,
+        work_date,
+        offset_seconds,
+        _SLICE_SECONDS,
+        lead_seconds=C.FIT_SEARCH_BACK_SECONDS,
     )
     if window.empty:
         return SpotMatch(

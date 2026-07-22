@@ -78,10 +78,15 @@ def test_match_spot_normal() -> None:
         1, _stream(), "09:01:00", "09:03:00", WORK_DATE, 0, _temperature(), _pressure()
     )
     assert not match.skipped
-    # A fixed-length window is sliced from the start (FIT_WINDOW + search offset =
-    # 480 s) so the fit step can find the most-linear sub-window; the recorded
-    # stop is only used to reject stop-before-start.
-    assert len(match.readings) == 480
+    # The window is sliced around the recorded start: a FIT_SEARCH_BACK (180 s)
+    # lead *before* it plus FIT_WINDOW + search offset (480 s) after, so the fit
+    # step can search — and the user shift — an earlier or later sub-window. Here
+    # the start is 09:01:00 (BASE+60) and the stream begins at BASE, so the lead is
+    # clipped to 60 s: 60 (lead) + 480 (forward) = 540 readings.
+    assert len(match.readings) == 540
+    # The lead margin means readings now exist *before* the recorded start.
+    assert (match.readings["timestamp"] < BASE + 60).any()
+    assert match.readings["timestamp"].min() == BASE
     # Temperature is attached per-reading (nearest in time), so several logger
     # values fall inside the 480 s window; the scalar is their mean.
     assert set(match.readings["temperature_used"].unique()) <= {18.0, 18.5, 19.0}

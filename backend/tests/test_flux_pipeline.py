@@ -119,6 +119,52 @@ def test_manual_offset_overrides_window_selection() -> None:
     assert co2.fit is not None and abs(co2.fit.slope - 0.03) < 1e-6
 
 
+def test_offsets_are_relative_to_the_anchor() -> None:
+    # With an anchor (recorded start) 180 s into the readings, a clean stream's
+    # window still starts ~30 s AFTER the recorded start -> reported offset 30,
+    # even though it's 210 s into the data.
+    df = _stream(600)
+    anchor = df["timestamp"].iloc[180]  # recorded start sits 180 s in
+    res = fit_spot(df, AREA, VOLUME, TEMP, PRESSURE, anchor_ts=anchor)
+    assert res["CO2"].fit_offset_s == 30.0
+
+
+def test_manual_negative_offset_reaches_earlier_data() -> None:
+    # A negative manual offset moves the window EARLIER than the recorded start,
+    # into the lead margin. Anchor 180 s in, offset -60 -> window starts 120 s
+    # into the data (60 s before the recorded start).
+    df = _stream(600)
+    anchor = df["timestamp"].iloc[180]
+    res = fit_spot(
+        df, AREA, VOLUME, TEMP, PRESSURE, anchor_ts=anchor, manual_offset_s=-60
+    )
+    co2 = res["CO2"]
+    assert co2.fit_offset_s == -60.0
+    assert co2.fit_start_s == -60.0
+    assert co2.fit_stop_s == 240.0  # full 5-min window kept (not cut)
+    assert co2.fit is not None and abs(co2.fit.slope - 0.03) < 1e-6
+
+
+def test_auto_search_reaches_slope_before_recorded_start() -> None:
+    # The real rise happens BEFORE the (late) recorded start, but within the lead
+    # margin. The auto-search must reach back to it: the window lands earlier than
+    # the anchor (negative reported offset) and fits cleanly.
+    n = 600
+    t = np.arange(n + 1, dtype=float)
+    # Clean linear rise over the first 300 s, then flat.
+    co2 = np.where(t <= 300, 400.0 + 0.05 * t, 400.0 + 0.05 * 300)
+    df = pd.DataFrame(
+        {"timestamp": 1000.0 + t, "co2_ppm": co2, "ch4_ppb": 1900.0 + 0.02 * t}
+    )
+    anchor = df["timestamp"].iloc[
+        180
+    ]  # recorded start 180 s in — past the rise's start
+    res = fit_spot(df, AREA, VOLUME, TEMP, PRESSURE, anchor_ts=anchor)
+    co2r = res["CO2"]
+    assert co2r.fit_offset_s < 0  # window moved earlier than the recorded start
+    assert co2r.fit is not None and co2r.fit.r2 > 0.95
+
+
 # --- Despike (isolated single-point spikes) --------------------------------
 
 

@@ -21,6 +21,14 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { UNIT_LADDER } from '@/lib/constants'
 import { formatR2 } from '@/lib/format'
 
+/** Human phrase for a fit-window offset relative to the recorded start. */
+function describeOffset(seconds: number): string {
+  const s = Math.round(seconds)
+  if (s === 0) return 'starts at the recorded start'
+  if (s > 0) return `starts ${s} s after the recorded start`
+  return `starts ${Math.abs(s)} s before the recorded start`
+}
+
 interface SpotDetailProps {
   analysisId: string
   nr: number
@@ -71,13 +79,14 @@ export function SpotDetail({
 
   function applyOffset() {
     const v = Number(offsetInput)
-    if (offsetInput.trim() === '' || Number.isNaN(v) || v < 0) return
+    // Negative is allowed: it shifts the window EARLIER than the recorded start.
+    if (offsetInput.trim() === '' || Number.isNaN(v)) return
     void saveOffset(Math.round(v))
   }
 
   function nudge(delta: number) {
     const base = Number(offsetInput)
-    setOffsetInput(String(Math.max(0, (Number.isNaN(base) ? 0 : base) + delta)))
+    setOffsetInput(String((Number.isNaN(base) ? 0 : base) + delta))
   }
 
   const idx = spotNrs.indexOf(nr)
@@ -154,16 +163,12 @@ export function SpotDetail({
                   data.fit_window_s,
                 )} s) as-is — no window selection.`
               : data.mode === 'manual'
-                ? `Manual fit: window starts +${Math.round(
+                ? `Manual fit: window ${describeOffset(
                     data.fit_offset_s,
-                  )} s after the recorded start · length ${Math.round(
-                    data.fit_window_s,
-                  )} s.`
-                : `Window shifted +${Math.round(
+                  )} · length ${Math.round(data.fit_window_s)} s.`
+                : `Window ${describeOffset(
                     data.fit_offset_s,
-                  )} s after the recorded start · length ${Math.round(
-                    data.fit_window_s,
-                  )} s${
+                  )} · length ${Math.round(data.fit_window_s)} s${
                     data.window_shortened ? ' · shortened to improve R²' : ''
                   }`}
           </p>
@@ -184,6 +189,14 @@ export function SpotDetail({
               <Button
                 variant="secondary"
                 size="sm"
+                onClick={() => nudge(-30)}
+                aria-label="Shift 30 seconds earlier"
+              >
+                −30 s
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => nudge(-5)}
                 aria-label="Shift 5 seconds earlier"
               >
@@ -191,10 +204,9 @@ export function SpotDetail({
               </Button>
               <input
                 type="number"
-                min={0}
                 value={offsetInput}
                 onChange={(e) => setOffsetInput(e.target.value)}
-                aria-label="Fit window start offset (seconds)"
+                aria-label="Fit window start offset (seconds; negative shifts earlier)"
                 className="h-9 w-24 rounded-lg border border-border bg-surface px-2 text-sm tabular-nums text-text focus:border-primary"
               />
               <span className="text-sm text-muted">s</span>
@@ -205,6 +217,14 @@ export function SpotDetail({
                 aria-label="Shift 5 seconds later"
               >
                 +5 s
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => nudge(30)}
+                aria-label="Shift 30 seconds later"
+              >
+                +30 s
               </Button>
               <Button size="sm" onClick={applyOffset} disabled={saving}>
                 Apply
@@ -222,8 +242,10 @@ export function SpotDetail({
             </div>
             <p className="mt-2 text-xs text-muted">
               Move where the {Math.round(data.fit_window_s)}-second window
-              starts, for this spot only. Saved — the results table and export
-              follow.
+              starts, relative to the recorded start — use a negative value to
+              shift it earlier. The window keeps its full length, so shifting
+              never cuts your measurement. For this spot only; saved — the
+              results table and export follow.
             </p>
           </div>
 

@@ -37,12 +37,16 @@ and `TimeSeriesPlot` draws them as a faint trace in the all-spots view (skipped
 in single-spot view so the axis stays zoomed to the spot), so no part of the
 LI-7810 record silently disappears from the graph.
 
-**Manual per-spot shift:** `SpotDetail` has a "Manual fit window" control (−/+ nudge
-+ seconds input + Apply / Reset to auto) that calls `api.setSpotFit(id, nr, offsetS)`
-(`PUT …/spots/{nr}/fit`, `offsetS=null` resets). The saved offset overrides the page
-fit mode for that spot (`SpotDetail.mode === 'manual'`, `manual_offset_s`), and the
-drawer calls `onFitChanged` so Results refetches the table + graph (a `fitVersion`
-counter in Results deps).
+**Manual per-spot shift:** `SpotDetail` has a "Manual fit window" control (−30/−5/+5/
++30 s nudges + a seconds input + Apply / Reset to auto) that calls
+`api.setSpotFit(id, nr, offsetS)` (`PUT …/spots/{nr}/fit`, `offsetS=null` resets).
+The offset is **relative to the recorded start and may be negative** (shift the
+window *earlier*, into the lead margin of data the matcher now keeps before the
+recorded start); the full window length is preserved, so shifting never cuts the
+measurement. The saved offset overrides the page fit mode for that spot
+(`SpotDetail.mode === 'manual'`, `manual_offset_s`), and the drawer calls
+`onFitChanged` so Results refetches the table + graph (a `fitVersion` counter in
+Results deps).
 
 **Deferred features keep their placeholders** end-to-end: `quality_check.available
 === false` → "quality check unavailable" (n8n, `TODO: later seminar`);

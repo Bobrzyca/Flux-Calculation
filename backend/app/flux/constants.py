@@ -36,6 +36,14 @@ DEFAULT_PRESSURE_HPA = 1013.25
 FIT_SKIP_SECONDS = 30
 FIT_WINDOW_SECONDS = 300
 FIT_SEARCH_MAX_OFFSET_SECONDS = 180
+# How far *before* the recorded start the fitter may also look (and the user may
+# shift the window). Hand-recorded start times are often late, or the instrument
+# clock runs ahead, so the real chamber-closure rise can sit earlier than the
+# noted start. We slice this many seconds of lead data before each spot's start
+# so the auto-search and the manual shift both have data to move back into —
+# without it, a backward shift has nothing to land on and the window can't reach
+# an earlier slope (the cause of many low-R² auto fits).
+FIT_SEARCH_BACK_SECONDS = 180
 # If the fitted window ends up with less than this many seconds of usable data
 # (short measurement, gaps, dropped spikes), flag it prominently — the flux is
 # less reliable over a short window.

@@ -237,8 +237,8 @@ export const api = {
 
   /**
    * PUT /analyses/{id}/spots/{nr}/fit — set (or clear) a spot's manual fit-window
-   * offset. `offsetS` in seconds after the spot's start; `null` restores auto.
-   * Persists the correction and returns the recomputed detail.
+   * offset. `offsetS` in seconds relative to the recorded start (negative = earlier);
+   * `null` restores auto. Persists the correction and returns the recomputed detail.
    */
   async setSpotFit(
     id: string,

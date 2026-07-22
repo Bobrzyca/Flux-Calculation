@@ -15,7 +15,7 @@ from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading, Spo
 from app.db.session import get_session
 from app.flux import constants as C
 from app.flux.pipeline import GAS_COLUMN, GasResult, fit_spot
-from app.matching.match import parse_note_time
+from app.matching.match import note_time_to_unix, parse_note_time
 from app.matching.timeshift import apply_offset
 from app.parsing.li7810 import parse_li7810
 from app.schemas.results import (
@@ -119,17 +119,33 @@ def _shift_hhmmss(hhmmss: str, seconds: int) -> str:
     return f"{total // 3600:02d}:{(total % 3600) // 60:02d}:{total % 60:02d}"
 
 
+def _anchor_ts(analysis: Analysis, spot: Spot) -> float | None:
+    """The recorded-start unix timestamp for a spot (None if its time is unset).
+
+    Offsets in ``fit_spot`` are measured from this, so the fit window can move
+    into the lead margin of data before the recorded start.
+    """
+    if not spot.start_time:
+        return None
+    try:
+        return note_time_to_unix(analysis.work_date, spot.start_time)
+    except ValueError:
+        return None
+
+
 def _fit_results(
     analysis: Analysis,
     readings: list[Reading],
     mode: str = "auto",
     manual_offset_s: float | None = None,
+    anchor_ts: float | None = None,
 ) -> dict[str, GasResult] | None:
     """Recompute both gases from persisted readings; None if unfittable.
 
     ``mode`` is passed through to ``fit_spot``: ``"auto"`` (best/shortened window)
     or ``"full"`` (fit the whole recorded window as-is). A ``manual_offset_s``
-    (the spot's saved override) wins over ``mode``.
+    (the spot's saved override) wins over ``mode``. ``anchor_ts`` is the recorded
+    start, so offsets/search are measured from it.
     """
     if not readings:
         return None
@@ -151,6 +167,7 @@ def _fit_results(
         pressure,
         mode=mode,
         manual_offset_s=manual_offset_s,
+        anchor_ts=anchor_ts,
     )
 
 
@@ -206,7 +223,11 @@ def get_results(
         # when none was supplied (pressure is optional).
         pressure = C.DEFAULT_PRESSURE_HPA if no_pressure else readings[0].pressure_used
         fits = _fit_results(
-            analysis, readings, mode=fit_mode, manual_offset_s=spot.manual_offset_s
+            analysis,
+            readings,
+            mode=fit_mode,
+            manual_offset_s=spot.manual_offset_s,
+            anchor_ts=_anchor_ts(analysis, spot),
         )
         if fits is None:
             # Readings exist but temperature missing -> flux not computed.
@@ -335,7 +356,11 @@ def _build_spot_detail(
     and reports ``mode="manual"``."""
     readings = _sorted_readings(spot)
     fits = _fit_results(
-        analysis, readings, mode=fit_mode, manual_offset_s=spot.manual_offset_s
+        analysis,
+        readings,
+        mode=fit_mode,
+        manual_offset_s=spot.manual_offset_s,
+        anchor_ts=_anchor_ts(analysis, spot),
     )
     if fits is None:
         return None  # skipped spot / no computable detail
@@ -390,7 +415,12 @@ def _rewrite_spot_flux_results(
     for old in list(spot.flux_results):
         session.delete(old)
     readings = _sorted_readings(spot)
-    fits = _fit_results(analysis, readings, manual_offset_s=spot.manual_offset_s)
+    fits = _fit_results(
+        analysis,
+        readings,
+        manual_offset_s=spot.manual_offset_s,
+        anchor_ts=_anchor_ts(analysis, spot),
+    )
     if fits is None:
         return
     for gas, gr in fits.items():
@@ -426,11 +456,11 @@ def set_spot_fit(
     session: Session = Depends(get_session),
 ) -> SpotDetail | None:
     """Set (``offset_s``) or clear (``offset_s=null``) a spot's manual fit-window
-    offset — the per-spot correction for a mis-placed automatic window. Persists the
-    override, rewrites the spot's ``FluxResult`` (so results + export follow), logs
-    the change, and returns the recomputed detail."""
-    if body.offset_s is not None and body.offset_s < 0:
-        raise api_error(422, "bad_offset", "offset_s must be ≥ 0 or null.", "offset_s")
+    offset — the per-spot correction for a mis-placed automatic window. ``offset_s``
+    is relative to the recorded start: positive = later, **negative = earlier** (the
+    fit window can move into the lead margin of data before the recorded start).
+    Persists the override, rewrites the spot's ``FluxResult`` (so results + export
+    follow), logs the change, and returns the recomputed detail."""
     analysis = _get_analysis(session, analysis_id)
     spot = next((s for s in analysis.spots if s.nr == nr), None)
     if spot is None:
@@ -439,11 +469,14 @@ def set_spot_fit(
     spot.manual_offset_s = body.offset_s
     session.add(spot)
     _rewrite_spot_flux_results(session, analysis, spot)
-    message = (
-        f"Spot {nr}: fit reset to automatic window"
-        if body.offset_s is None
-        else f"Spot {nr}: manual fit window set to start +{int(body.offset_s)} s"
-    )
+    if body.offset_s is None:
+        message = f"Spot {nr}: fit reset to automatic window"
+    else:
+        direction = "later" if body.offset_s >= 0 else "earlier"
+        message = (
+            f"Spot {nr}: manual fit window set to "
+            f"{abs(int(body.offset_s))} s {direction} than the recorded start"
+        )
     session.add(
         ProcessingLogEntry(analysis_id=analysis_id, severity="info", message=message)
     )

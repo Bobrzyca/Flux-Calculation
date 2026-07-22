@@ -128,10 +128,18 @@ def test_set_manual_offset_shifts_and_persists(client: TestClient) -> None:
     assert reset["manual_offset_s"] is None
 
 
-def test_set_manual_offset_rejects_negative(client: TestClient) -> None:
+def test_set_manual_offset_negative_shifts_earlier(client: TestClient) -> None:
+    # A negative offset moves the fit window EARLIER than the recorded start (into
+    # the lead margin) — the "shift time backward" the field notes often need.
     analysis_id = _create_and_match(client)
-    resp = client.put(f"/api/analyses/{analysis_id}/spots/1/fit", json={"offset_s": -5})
-    assert resp.status_code == 422
+    resp = client.put(
+        f"/api/analyses/{analysis_id}/spots/1/fit", json={"offset_s": -60}
+    )
+    assert resp.status_code == 200
+    detail = resp.json()
+    assert detail["mode"] == "manual"
+    assert detail["manual_offset_s"] == -60.0
+    assert detail["fit_offset_s"] == -60.0
 
 
 def test_set_manual_offset_unknown_spot_404(client: TestClient) -> None:
@@ -202,9 +210,10 @@ def test_timeseries_includes_background(client: TestClient) -> None:
 
     for gas in ("co2", "ch4"):
         background = ts[gas]["background"]
-        # The sample stream runs 09:37–09:57; the spot slices cover only part of
-        # it, so a real chunk of the record must land in the background.
-        assert len(background) > 100
+        # The spot slices now include a lead margin, so they cover more of the
+        # record and the background is smaller — but the stretch outside every
+        # spot window (here after the last spot) must still show up.
+        assert len(background) > 0
         assert all(p["in_window"] is False for p in background)
         # Background never duplicates a point already drawn by a spot trace.
         spot_ts = {p["t_unix"] for s in ts[gas]["spots"] for p in s["points"]}

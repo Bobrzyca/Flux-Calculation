@@ -119,58 +119,81 @@ def _r2_over(
     return r2 if r2 == r2 else None  # drop NaN (flat/zero-variance window)
 
 
+def _search_bounds(anchor_rel: float, span: float, win: float) -> tuple[int, int, int]:
+    """``(lo_off, hi_off, skip_target)`` for a ``win``-long window (rel to t0).
+
+    The search is centred on the recorded start (``anchor_rel`` seconds after the
+    first reading): it may look ``FIT_SEARCH_BACK_SECONDS`` earlier and
+    ``FIT_SEARCH_MAX_OFFSET_SECONDS`` later, clamped to the data. ``skip_target``
+    is the tie-break/default position — ``FIT_SKIP_SECONDS`` after the recorded
+    start — so a clean measurement is unchanged and only a lagged one shifts.
+    """
+    a = int(round(anchor_rel))
+    lo_off = max(0, a - C.FIT_SEARCH_BACK_SECONDS)
+    hi_off = min(int(span - win), a + C.FIT_SEARCH_MAX_OFFSET_SECONDS)
+    return lo_off, hi_off, a + C.FIT_SKIP_SECONDS
+
+
 def _best_offset(
-    readings: pd.DataFrame, rel: pd.Series, t0: float, win: float, max_off: int
+    readings: pd.DataFrame,
+    rel: pd.Series,
+    t0: float,
+    win: float,
+    lo_off: int,
+    hi_off: int,
+    skip_target: int,
 ) -> tuple[float, float | None]:
     """Best start offset for a ``win``-long window and the R² there.
 
-    Slides the window over ``[0, max_off]`` and picks the most-linear start —
+    Slides the window over ``[lo_off, hi_off]`` and picks the most-linear start —
     judged by CO₂ (the primary signal), else CH₄. Among windows within 0.02 R² of
-    the best, chooses the one closest to ``FIT_SKIP_SECONDS`` so clean measurements
-    still start ~30 s in and only lagged ones shift. Returns
-    ``(offset, r2_at_offset)``; R² is ``None`` when neither gas could be fit.
+    the best, chooses the one closest to ``skip_target`` (``FIT_SKIP_SECONDS``
+    after the recorded start) so clean measurements are unchanged and only lagged
+    ones shift. Returns ``(offset, r2_at_offset)``; R² is ``None`` when neither gas
+    could be fit.
     """
     for column in ("co2_ppm", "ch4_ppb"):
         scored = [
             (off, r2)
-            for off in range(0, max_off + 1, 10)
+            for off in range(lo_off, hi_off + 1, 10)
             if (r2 := _r2_over(readings, rel, t0, column, off, off + win)) is not None
         ]
         if scored:
             best = max(r2 for _, r2 in scored)
             near = [off for off, r2 in scored if r2 >= best - 0.02]
-            offset = float(min(near, key=lambda o: abs(o - C.FIT_SKIP_SECONDS)))
+            offset = float(min(near, key=lambda o: abs(o - skip_target)))
             return offset, _r2_over(readings, rel, t0, column, offset, offset + win)
-    return float(C.FIT_SKIP_SECONDS), None
+    return float(skip_target), None
 
 
 def _choose_window(
-    readings: pd.DataFrame, rel: pd.Series, t0: float, span: float
+    readings: pd.DataFrame, rel: pd.Series, t0: float, span: float, anchor_rel: float
 ) -> tuple[float, float, bool]:
-    """Pick ``(offset, length, shortened)`` for the fit window.
+    """Pick ``(offset, length, shortened)`` for the fit window (offset rel to t0).
 
-    Starts from the best full-length (``FIT_WINDOW_SECONDS``) window. If that fit is
-    already trustworthy (R² ≥ ``LOW_R2_THRESHOLD``) it is kept untouched. Only a
-    low-R² spot is a candidate for shortening: shorter windows (down to
-    ``FIT_SHORTEN_MIN_SECONDS``) are tried and the best is adopted if it lifts R² by
-    at least ``FIT_SHORTEN_MIN_GAIN``.
+    Starts from the best full-length (``FIT_WINDOW_SECONDS``) window, searched
+    around the recorded start (see ``_search_bounds``). If that fit is already
+    trustworthy (R² ≥ ``LOW_R2_THRESHOLD``) it is kept untouched. Only a low-R²
+    spot is a candidate for shortening: shorter windows (down to
+    ``FIT_SHORTEN_MIN_SECONDS``) are tried and the best is adopted if it lifts R²
+    by at least ``FIT_SHORTEN_MIN_GAIN``.
     """
     win = float(C.FIT_WINDOW_SECONDS)
-    max_off = min(int(span - win), C.FIT_SEARCH_MAX_OFFSET_SECONDS)
-    if max_off < 0:  # less than a full window of data — keep prior behaviour
-        return float(C.FIT_SKIP_SECONDS), win, False
+    lo_off, hi_off, skip_target = _search_bounds(anchor_rel, span, win)
+    if hi_off < lo_off:  # less than a full window of data — keep prior behaviour
+        return float(skip_target), win, False
 
-    offset, r2 = _best_offset(readings, rel, t0, win, max_off)
+    offset, r2 = _best_offset(readings, rel, t0, win, lo_off, hi_off, skip_target)
     if r2 is None or r2 >= C.LOW_R2_THRESHOLD:
         return offset, win, False  # clean enough — never shorten
 
     best_off, best_len, best_r2 = offset, win, r2
     length = win - C.FIT_SHORTEN_STEP_SECONDS
     while length >= C.FIT_SHORTEN_MIN_SECONDS:
-        mo = min(int(span - length), C.FIT_SEARCH_MAX_OFFSET_SECONDS)
-        if mo < 0:
+        lo_l, hi_l, skip_l = _search_bounds(anchor_rel, span, length)
+        if hi_l < lo_l:
             break
-        off_l, r2_l = _best_offset(readings, rel, t0, length, mo)
+        off_l, r2_l = _best_offset(readings, rel, t0, length, lo_l, hi_l, skip_l)
         if r2_l is not None and r2_l > best_r2:
             best_off, best_len, best_r2 = off_l, length, r2_l
         length -= C.FIT_SHORTEN_STEP_SECONDS
@@ -188,6 +211,7 @@ def fit_spot(
     pressure_hpa: float,
     mode: str = "auto",
     manual_offset_s: float | None = None,
+    anchor_ts: float | None = None,
 ) -> dict[str, GasResult]:
     """Fit both gases for a spot.
 
@@ -195,9 +219,16 @@ def fit_spot(
     possibly shortened) window. ``mode="full"`` despikes, then fits the **whole
     recorded window** as-is (no window search) — the "use the file's series without
     fitting" option. When ``manual_offset_s`` is given it **overrides** both: the
-    fit uses a fixed ``FIT_WINDOW_SECONDS`` window starting that many seconds after
-    the spot's first reading (the manual per-spot correction). ``readings`` needs
-    ``timestamp``, ``co2_ppm`` and ``ch4_ppb``.
+    fit uses a fixed ``FIT_WINDOW_SECONDS`` window starting that many seconds
+    **relative to the recorded start** — positive = later, **negative = earlier**
+    (the manual per-spot correction). ``readings`` needs ``timestamp``, ``co2_ppm``
+    and ``ch4_ppb``.
+
+    ``anchor_ts`` is the recorded-start unix timestamp; all offsets (auto search,
+    reported ``fit_offset_s``, and the manual shift) are measured from it, so a
+    lead margin of data before the recorded start lets the window move earlier.
+    When ``None`` the anchor is the first reading (offsets measured from t0) —
+    the behaviour before the lead margin existed.
     """
     if readings.empty:
         return {
@@ -226,19 +257,33 @@ def fit_spot(
     t0 = float(work["timestamp"].min())
     rel = work["timestamp"].astype(float) - t0
     span = float(rel.max())
+    # Where the recorded start sits within the readings (0 when no anchor / no
+    # lead data). Offsets are reported relative to this, so the window can move
+    # earlier (negative) into the lead margin.
+    anchor_rel = 0.0
+    if anchor_ts is not None:
+        anchor_rel = min(max(0.0, float(anchor_ts) - t0), span)
 
-    # 2) Choose the window. A manual offset wins over auto/full; otherwise the
-    #    page mode decides (whole recording vs the best/shortened window).
+    # 2) Choose the window (lo/hi are rel to t0 for masking; offset/start/stop are
+    #    reported rel to the recorded start). A manual offset wins over auto/full;
+    #    otherwise the page mode decides (whole recording vs best/shortened window).
     if manual_offset_s is not None:
-        offset, win = float(manual_offset_s), float(C.FIT_WINDOW_SECONDS)
+        win = float(C.FIT_WINDOW_SECONDS)
+        lo = anchor_rel + float(manual_offset_s)
+        hi = lo + win
         shortened = False
-        lo, hi = offset, offset + win
+        offset = float(manual_offset_s)
+        start_report, stop_report = offset, offset + win
     elif mode == "full":
-        offset, win, shortened = 0.0, span, False
+        win, shortened = span, False
         lo, hi = 0.0, span + 1.0  # include the last sample
+        offset = 0.0
+        start_report, stop_report = -anchor_rel, span - anchor_rel
     else:
-        offset, win, shortened = _choose_window(work, rel, t0, span)
-        lo, hi = offset, offset + win
+        start_rel, win, shortened = _choose_window(work, rel, t0, span, anchor_rel)
+        lo, hi = start_rel, start_rel + win
+        offset = start_rel - anchor_rel
+        start_report, stop_report = offset, offset + win
 
     window_mask = ((rel >= lo) & (rel < hi)).to_numpy()
     window = work[window_mask]
@@ -269,8 +314,8 @@ def fit_spot(
         flags: list[str] = [SHORT_WINDOW] if short else []
         common: dict[str, Any] = dict(
             fit_offset_s=offset,
-            fit_start_s=lo,
-            fit_stop_s=hi,
+            fit_start_s=start_report,
+            fit_stop_s=stop_report,
             fit_window_s=win,
             window_shortened=shortened,
             n_spikes=n_spikes,

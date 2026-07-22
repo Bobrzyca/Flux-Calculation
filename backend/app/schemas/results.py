@@ -118,9 +118,10 @@ class SpotDetail(BaseModel):
 class SpotFitUpdate(BaseModel):
     """Set (or clear) a spot's manual fit-window offset.
 
-    ``offset_s`` is seconds after the spot's first reading where the fixed-length
-    fit window should start; ``None`` clears the override and restores the
-    automatic best-window selection.
+    ``offset_s`` is seconds **relative to the recorded start** where the
+    fixed-length fit window should start: positive = later, negative = earlier
+    (the window can move into the lead margin of data before the recorded start).
+    ``None`` clears the override and restores the automatic best-window selection.
     """
 
     offset_s: float | None
