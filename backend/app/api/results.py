@@ -556,7 +556,11 @@ def get_timeseries(
             continue
         covered.update(r.timestamp for r in readings)
         fits = _fit_results(
-            analysis, readings, mode=fit_mode, manual_offset_s=spot.manual_offset_s
+            analysis,
+            readings,
+            mode=fit_mode,
+            manual_offset_s=spot.manual_offset_s,
+            anchor_ts=_anchor_ts(analysis, spot),
         )
         t0 = readings[0].timestamp
         for gas in GAS_COLUMN:

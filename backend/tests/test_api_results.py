@@ -142,6 +142,35 @@ def test_set_manual_offset_negative_shifts_earlier(client: TestClient) -> None:
     assert detail["fit_offset_s"] == -60.0
 
 
+def test_manual_offset_window_matches_between_detail_and_timeseries(
+    client: TestClient,
+) -> None:
+    """A manual shift must place the SAME window on the overview graph as in the
+    per-spot detail. Both endpoints read the same ``_sorted_readings`` in order and
+    share ``t0`` (the first reading), so their point lists align element-for-element
+    — the ``in_window`` highlight must match position-by-position. Regression guard:
+    the timeseries endpoint used to omit ``anchor_ts``, so its window sat the
+    matcher's lead margin (~180 s) earlier than the detail view, and the graphic
+    disagreed with the window the user had just set."""
+    analysis_id = _create_and_match(client)
+    base = f"/api/analyses/{analysis_id}"
+
+    client.put(f"{base}/spots/1/fit", json={"offset_s": 75})
+
+    detail = client.get(f"{base}/spots/1").json()
+    ts = client.get(f"{base}/timeseries").json()
+    ts_spot = {
+        gas: next(s for s in ts[gas]["spots"] if s["nr"] == 1) for gas in ("co2", "ch4")
+    }
+
+    for gas, key in (("CO2", "co2"), ("CH4", "ch4")):
+        detail_pts = detail["gases"][gas]["points"]
+        ts_pts = ts_spot[key]["points"]
+        assert len(detail_pts) == len(ts_pts)
+        assert [p["in_window"] for p in detail_pts] == [p["in_window"] for p in ts_pts]
+        assert any(p["in_window"] for p in ts_pts)
+
+
 def test_set_manual_offset_unknown_spot_404(client: TestClient) -> None:
     analysis_id = _create_and_match(client)
     resp = client.put(
