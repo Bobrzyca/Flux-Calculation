@@ -166,12 +166,36 @@ export interface SpotDetail {
   fit_offset_s: number
   /** Fit-window length in seconds (< 300 when shortened; whole span in full mode). */
   fit_window_s: number
+  /** Window end relative to the recorded start (= fit_offset_s + fit_window_s). */
+  fit_end_s: number
   /** True when the window was shortened to recover a low R². */
   window_shortened: boolean
-  /** Saved manual offset for this spot (null = automatic). */
+  /** Saved manual start offset for this spot (null = automatic). */
   manual_offset_s: number | null
+  /** Saved manual END offset (set only when the far edge was cropped by hand). */
+  manual_end_offset_s: number | null
   flags: SpotFlag[]
   gases: Record<Gas, GasDetail>
+}
+
+/** A single point of the temperature-preview series (confirm page). */
+export interface TemperaturePoint {
+  t_unix: number
+  value: number
+}
+
+/** Review of the parsed temperature file shown before matching. */
+export interface TemperatureSummary {
+  /** False (with a message) when no temperature file is stored or it can't be read. */
+  available: boolean
+  message: string | null
+  count: number
+  start_unix: number | null
+  end_unix: number | null
+  min_c: number | null
+  max_c: number | null
+  mean_c: number | null
+  points: TemperaturePoint[]
 }
 
 /** Whole-campaign time series for the overview graph (absolute time axis). */

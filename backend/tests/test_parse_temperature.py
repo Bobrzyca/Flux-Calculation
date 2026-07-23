@@ -40,6 +40,61 @@ def test_parse_temperature_reads_csv(tmp_path: Path) -> None:
     assert df["timestamp"].diff().dropna().iloc[0] == 30.0
 
 
+def test_parse_temperature_space_aligned_with_status_type_cols(tmp_path: Path) -> None:
+    # Real logger export: 2+-space-aligned, dotted DD.MM.YYYY HH:MM combined
+    # datetime, plus Status/Type/CO2/RH columns we ignore. Temp in "Temp(°C)".
+    f = tmp_path / "temp.txt"
+    f.write_text(
+        "Date                   Status    Type                  CO2(ppm)    Temp(°C)    RH(%)\n"  # noqa: E501
+        "02.07.2026 09:15    0x00    Data                  295    24.38    58.02\n"
+        "02.07.2026 09:16    0x00    Data                  100    23.86    58.45\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].tolist() == [24.38, 23.86]
+    from datetime import UTC, datetime
+
+    assert datetime.fromtimestamp(df["timestamp"].iloc[0], tz=UTC).month == 7  # July
+
+
+def test_parse_temperature_preamble_and_ragged_rows(tmp_path: Path) -> None:
+    # A "MeterID ..." preamble line ABOVE the header, ISO datetimes, and ragged
+    # rows without a temperature (Type=Measurement_Start). The header must be
+    # located (not taken as row 0), the ragged rows must not crash the parse, and
+    # only the real Data rows contribute temperatures.
+    f = tmp_path / "temp.txt"
+    f.write_text(
+        "MeterID    0x03423E62\n"
+        "Date                   Status    Type                  CO2(ppm)    Temp(°C)    RH(%)\n"  # noqa: E501
+        "2026-03-04 11:18:20    0x00    Measurement_Start\n"
+        "2026-03-04 11:18:41    0x00    Data                  439         10.97       49.39\n"  # noqa: E501
+        "2026-03-04 11:19:11    0x00    Data                  440         9.97        49.15\n",  # noqa: E501
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    temps = df["temperature_c"].dropna().tolist()
+    assert 10.97 in temps and 9.97 in temps
+    from datetime import UTC, datetime
+
+    assert datetime.fromtimestamp(df["timestamp"].iloc[0], tz=UTC).month == 3  # March
+
+
+def test_parse_temperature_preamble_xlsx(tmp_path: Path) -> None:
+    # The same data saved from Excel: a preamble row above the header.
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["MeterID", "0x03423E62"])
+    ws.append(["Date", "Status", "Type", "CO2(ppm)", "Temp(°C)", "RH(%)"])
+    ws.append(["2026-03-04 11:18:41", "0x00", "Data", 439, 10.97, 49.39])
+    ws.append(["2026-03-04 11:19:11", "0x00", "Data", 440, 9.97, 49.15])
+    f = tmp_path / "temp.xlsx"
+    wb.save(f)
+    df = parse_temperature(f)
+    assert df["temperature_c"].dropna().tolist() == [10.97, 9.97]
+
+
 def test_parse_temperature_comma_decimal_values(tmp_path: Path) -> None:
     # European logger: ';' delimiter and comma decimals ("13,35"). Used to
     # silently yield all-NaN temperatures (timestamps parsed, so dropna missed it).

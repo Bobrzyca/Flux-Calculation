@@ -9,6 +9,30 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class TemperaturePoint(BaseModel):
+    t_unix: float  # absolute time (naive local wall-clock as unix seconds)
+    value: float  # °C
+
+
+class TemperatureSummary(BaseModel):
+    """Review of the parsed temperature file for the confirmation page.
+
+    ``available`` is False (with a ``message``) when no temperature file is stored
+    or it can't be read — the page then tells the user to fix it on Upload rather
+    than failing the match later. ``points`` is a downsampled preview for a plot.
+    """
+
+    available: bool
+    message: str | None = None
+    count: int = 0
+    start_unix: float | None = None
+    end_unix: float | None = None
+    min_c: float | None = None
+    max_c: float | None = None
+    mean_c: float | None = None
+    points: list[TemperaturePoint] = Field(default_factory=list)
+
+
 class SpotResult(BaseModel):
     nr: int
     date: str
@@ -118,23 +142,32 @@ class SpotDetail(BaseModel):
     fit_offset_s: float = 0.0
     fit_window_s: float = 0.0
     window_shortened: bool = False
-    # The saved manual offset for this spot (None = automatic). Lets the UI show
-    # and pre-fill the current manual correction.
+    # The saved manual offset(s) for this spot (None = automatic). Lets the UI show
+    # and pre-fill the current manual correction. ``manual_end_offset_s`` is set
+    # only when the far edge was also cropped by hand.
     manual_offset_s: float | None = None
+    manual_end_offset_s: float | None = None
+    # Absolute window edges relative to the recorded start (start = fit_offset_s;
+    # end = fit_offset_s + fit_window_s), handy for pre-filling the crop controls.
+    fit_end_s: float = 0.0
     flags: list[str] = Field(default_factory=list)
     gases: dict[str, GasDetail]
 
 
 class SpotFitUpdate(BaseModel):
-    """Set (or clear) a spot's manual fit-window offset.
+    """Set (or clear) a spot's manual fit window.
 
-    ``offset_s`` is seconds **relative to the recorded start** where the
-    fixed-length fit window should start: positive = later, negative = earlier
-    (the window can move into the lead margin of data before the recorded start).
-    ``None`` clears the override and restores the automatic best-window selection.
+    ``offset_s`` is seconds **relative to the recorded start** where the fit
+    window should start: positive = later, negative = earlier (the window can move
+    into the lead margin of data before the recorded start). ``end_offset_s`` (also
+    relative to the recorded start) optionally crops the far edge too, so both ends
+    are hand-picked; omit/``None`` it to keep the default window length (a plain
+    shift). ``offset_s=None`` clears the override and restores the automatic
+    best-window selection.
     """
 
     offset_s: float | None
+    end_offset_s: float | None = None
 
 
 class LogEntry(BaseModel):

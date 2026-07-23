@@ -15,6 +15,7 @@ import type {
   ResultsPayload,
   SpotDetail,
   SpotResult,
+  TemperatureSummary,
 } from '@/api/types'
 import { LOW_R2_THRESHOLD } from '@/lib/constants'
 
@@ -536,13 +537,35 @@ export function buildSpotDetail(nr: number): SpotDetail | null {
     mode: 'auto',
     fit_offset_s: 30,
     fit_window_s: 300,
+    fit_end_s: 330,
     window_shortened: false,
     manual_offset_s: null,
+    manual_end_offset_s: null,
     flags,
     gases: {
       CO2: buildGasDetail(spec, 'CO2', nr * 101 + 1),
       CH4: buildGasDetail(spec, 'CH4', nr * 101 + 2),
     },
+  }
+}
+
+export function buildTemperatureSummary(): TemperatureSummary {
+  const start = 1_782_984_900 // 2026-07-02 morning
+  const points = Array.from({ length: 40 }, (_, i) => ({
+    t_unix: start + i * 30,
+    value: 24 + Math.sin(i / 6) * 1.5,
+  }))
+  const values = points.map((p) => p.value)
+  return {
+    available: true,
+    message: null,
+    count: points.length,
+    start_unix: points[0].t_unix,
+    end_unix: points[points.length - 1].t_unix,
+    min_c: Math.min(...values),
+    max_c: Math.max(...values),
+    mean_c: values.reduce((a, b) => a + b, 0) / values.length,
+    points,
   }
 }
 

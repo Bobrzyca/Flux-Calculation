@@ -123,15 +123,28 @@ suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile
   "use the file's time series without fitting" view. A saved manual offset on the
   spot overrides both (`mode="manual"`). `null` for a skipped spot, 404 if the spot
   doesn't exist, 422 (`bad_fit_mode`) on an unknown `fit_mode`.
-- `PUT /api/analyses/{id}/spots/{nr}/fit` (body `SpotFitUpdate` = `{offset_s: float
-  | null}`) — set (or clear with `null`) a spot's **manual fit-window offset**: the
-  per-spot correction for a mis-placed automatic window. `offset_s` is **relative to
-  the recorded start** — positive = later, **negative = earlier** (moves the window
-  into the lead margin of data before the recorded start). Persists
-  `Spot.manual_offset_s`, **rewrites that spot's `FluxResult`** so the results table
-  and export follow, logs the change, and returns the recomputed `SpotDetail`. 404
-  if the spot doesn't exist. Manual offsets survive a re-`match` (the match step
-  honours them).
+- `GET /api/analyses/{id}/temperature` → `TemperatureSummary` — the **parsed
+  temperature review** backing the confirm-temperature page: `available`, `count`,
+  `start_unix`/`end_unix`, `min_c`/`max_c`/`mean_c`, and a **downsampled preview
+  series** (`points`, capped like the overview background). `available=false` with a
+  `message` when no temperature file is stored or it can't be read (so the UI points
+  the user back to Upload instead of failing at match time). 404 if the analysis is
+  unknown.
+- `PUT /api/analyses/{id}/spots/{nr}/fit` (body `SpotFitUpdate` =
+  `{offset_s: float | null, end_offset_s?: float | null}`) — set (or clear with
+  `offset_s=null`) a spot's **manual fit window**: the per-spot correction for a
+  mis-placed automatic window. `offset_s` is **relative to the recorded start** —
+  positive = later, **negative = earlier** (moves the window into the lead margin of
+  data before the recorded start). The optional **`end_offset_s`** crops the far edge
+  too (both ends chosen by hand, for spots disturbed at both ends); omit it to keep
+  the default window length (a plain shift). `end_offset_s <= offset_s` → 422
+  `bad_window`. Persists `Spot.manual_offset_s`/`manual_end_offset_s`, **rewrites that
+  spot's `FluxResult`** so the results table and export follow, logs the change, and
+  returns the recomputed `SpotDetail`. 404 if the spot doesn't exist. Manual windows
+  survive a re-`match` **and a re-confirm of unchanged notes** (`PUT …/notes` carries
+  `manual_offset_s`/`manual_end_offset_s` forward for rows whose `nr`+times are
+  unchanged; a changed row resets its window). So adding a pressure file later
+  changes only the results, not the hand-picked windows.
 - `GET /api/analyses/{id}/timeseries?fit_mode=auto|full` → `Timeseries` (per gas:
   every computed spot's points on the absolute time axis with `in_window`, the
   fit-line endpoints, **and `background`** — the rest of the raw concentration
@@ -212,23 +225,27 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
     it header-less, finding the header row by name, and re-keying the data. Legacy
     `.xls` is not supported (no `xlrd` dependency). The frontend concentration
     dropzone accepts `.txt,.xlsx,.xlsm` accordingly.
-- `temperature.py` reads `.xlsx`/`.csv`/`.txt` and is **format-agnostic** — it
-  resolves which column is which by name *and* by content, so a new logger export
-  doesn't need a code change. It sniffs the **encoding** (shared
-  `parsing/encoding.py`; a cp1250 `°C` no longer rejects the file). Delimiters:
-  tab/`;`/`,` plus a **2+-space** fallback
-  for space-aligned/fixed-width exports (keeps the single space inside a
+- `temperature.py` reads `.xlsx`/`.csv`/`.txt` via the shared `tabular.py` and is
+  **format-agnostic** — it resolves which column is which by name *and* by content,
+  so a new logger export doesn't need a code change. `tabular.read_table` **locates
+  the header row** (skipping a preamble line above it, e.g. `MeterID  0x03423E62`, by
+  finding the first row that names a date/time column) and **tolerates ragged rows**
+  (`on_bad_lines="skip"`), so real logger exports with marker rows like
+  `Measurement_Start`/`Measurement_Stop` (no temperature) parse cleanly — those rows
+  are dropped for want of a value. Encoding sniffed via `parsing/encoding.py` (a
+  cp1250 `°C` no longer rejects the file). Delimiters: tab/`;`/`,` plus a **2+-space**
+  fallback for space-aligned/fixed-width exports (keeps the single space inside a
   `YYYY-MM-DD HH:MM:SS` datetime intact). Temperature column: exact aliases, then any
-  header containing `temp`/`°C`/`(c)` (ignoring extra Status/Type/CO2/RH columns).
-  Date/time: the date + time may be in **one combined column** or **two separate
-  columns** (English `Date`/`Time`, Polish `Data`+`Godzina`/`Czas`) — separate
-  columns are recombined, and an Excel date-only cell's `00:00:00` tail is stripped
-  so a separate time attaches. The **day/month/year order is inferred from the
-  values**: a 4-digit leading part → ISO year-first (`2025-10-06`); a part > 12 →
-  fixes the day (day-first `13.10.2025`) or the month (US `10/13/2025`); ambiguous →
-  European day-first. When headers are unrecognised it falls back to the column that
-  parses as the most datetimes. Unreadable / no date / no temp column → clean
-  `ValueError` (→ 422).
+  header containing `temp`/`°C`/`(c)` (ignoring extra Status/Type/CO2/RH columns);
+  values coerced via `to_float_series` so **comma decimals** (`13,35`) work. Date/time
+  may be in **one combined column** or **two separate columns** (English
+  `Date`/`Time`, Polish `Data`+`Godzina`/`Czas`) — separate columns are recombined,
+  and an Excel date-only cell's `00:00:00` tail is stripped so a separate time
+  attaches. The **day/month/year order is inferred from the values**: a 4-digit
+  leading part → ISO year-first (`2025-10-06`); a part > 12 → fixes the day (day-first
+  `13.10.2025`) or the month (US `10/13/2025`); ambiguous → European day-first. When
+  headers are unrecognised it falls back to the column that parses as the most
+  datetimes. Unreadable / no date / no temp column → clean `ValueError` (→ 422).
 - `notes.py` sniffs the **encoding** (shared `parsing/encoding.py`:
   utf-8-sig/cp1250/latin-1 + UTF-16 BOM — a cp1250 site name like `nad tamą` no
   longer rejects the file) and auto-detects the delimiter for `.csv`/`.txt`/`.tsv`
@@ -309,14 +326,16 @@ fits the entire recorded span as-is (despiking still applies) — surfaced via t
 `fit_mode=full` query param on the **results, timeseries, and spot-detail**
 endpoints (the frontend Results page drives all three from one "Block auto-fit"
 switch).
-**Manual per-spot offset:** `fit_spot(..., manual_offset_s=…)` uses a fixed
-`FIT_WINDOW_SECONDS` window starting `manual_offset_s` seconds from the recorded
-start — **positive = later, negative = earlier** — and **overrides** auto/full. It
-keeps its full length (shifting never truncates the window, given the lead margin),
-so the researcher can slide it onto the visible slope without cutting the
-measurement. The saved correction (`Spot.manual_offset_s`) is set/cleared via
-`PUT …/spots/{nr}/fit`, which rewrites the spot's `FluxResult` so results + export
-follow.
+**Manual per-spot offset + crop:** `fit_spot(..., manual_offset_s=…,
+manual_end_offset_s=…)` places a window starting `manual_offset_s` seconds from the
+recorded start (**positive = later, negative = earlier**) and **overrides**
+auto/full. With no `manual_end_offset_s` it keeps the default `FIT_WINDOW_SECONDS`
+length (a plain shift never truncates the measurement, given the lead margin); with
+`manual_end_offset_s` set it **crops the far edge too** (both ends hand-picked, for
+spots disturbed at both ends). A malformed end (`<= ` start) falls back to the
+default length. The saved correction (`Spot.manual_offset_s` +
+`manual_end_offset_s`) is set/cleared via `PUT …/spots/{nr}/fit`, which rewrites the
+spot's `FluxResult` so results + export follow.
 **Validation:** the ladder is locked by hand-computed values in `tests/test_flux.py`.
 `reference/flux_reference.R` exists but is a **Python-derived scaffold** (so it can't
 independently validate yet) — `# TODO: re-validate` once the real, independent R
@@ -356,12 +375,14 @@ Columns mirror `project-brief.md` → "Data stored by the application" (with an 
   time_offset_seconds, status, created_at)` — `status` is
   `draft | needs_review | complete`.
 - **`Spot`** `(id, analysis_id, nr, gps, light_dark, location_desc, start_time,
-  stop_time, manual_offset_s)` — `start_time`/`stop_time` are `HH:MM:SS` strings
-  (`PUT …/notes` normalises hand-edited times, e.g. `9:41` → `09:41:00`; a
-  malformed time is stored as `""` and skips just that spot at match time);
-  `manual_offset_s` (nullable) is the saved manual fit-window override (None =
-  automatic). Added after initial release, so `create_db_and_tables` runs a tiny
-  idempotent `ADD COLUMN` migration (`session.py:_run_lightweight_migrations`) for
+  stop_time, manual_offset_s, manual_end_offset_s)` — `start_time`/`stop_time` are
+  `HH:MM:SS` strings (`PUT …/notes` normalises hand-edited times, e.g. `9:41` →
+  `09:41:00`; a malformed time is stored as `""` and skips just that spot at match
+  time); `manual_offset_s` (nullable) is the saved manual fit-window start override
+  and `manual_end_offset_s` (nullable) the optional hand-picked window END (crop) —
+  both None = automatic. Added after initial release, so `create_db_and_tables` runs
+  tiny idempotent `ADD COLUMN` migrations (`session.py:_run_lightweight_migrations`)
+  for
   DBs created before it existed.
 - **`Reading`** `(id, spot_id, timestamp, co2_ppm, ch4_ppb, temperature_used,
   pressure_used)` — concentrations are nullable (`nan` rows stored as null).

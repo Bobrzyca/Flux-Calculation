@@ -68,4 +68,9 @@ def parse_temperature(path: str | Path) -> pd.DataFrame:
         raise ValueError(
             f"Temperature file '{date_col}' column held no parseable dates."
         )
+    # Drop rows with no temperature (e.g. logger marker rows like
+    # "Measurement_Start" that carry a timestamp but no reading).
+    out = out.dropna(subset=["temperature_c"])
+    if out.empty:
+        raise ValueError("Temperature file had no parseable temperature values.")
     return out.sort_values("timestamp", ignore_index=True)

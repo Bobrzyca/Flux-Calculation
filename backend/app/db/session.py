@@ -42,6 +42,7 @@ def _run_lightweight_migrations() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
     _add_column_if_missing("spot", "manual_offset_s", "FLOAT")
+    _add_column_if_missing("spot", "manual_end_offset_s", "FLOAT")
 
 
 def _add_column_if_missing(table: str, column: str, sql_type: str) -> None:

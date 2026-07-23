@@ -44,16 +44,31 @@ raw record around the spot; `RegressionPlot` draws it as a faint "Surrounding
 record" trace behind the spot's own points, so the manual-shift control shows far
 more than the fit window and it's easy to see where to move it.
 
-**Manual per-spot shift:** `SpotDetail` has a "Manual fit window" control (−30/−5/+5/
-+30 s nudges + a seconds input + Apply / Reset to auto) that calls
-`api.setSpotFit(id, nr, offsetS)` (`PUT …/spots/{nr}/fit`, `offsetS=null` resets).
-The offset is **relative to the recorded start and may be negative** (shift the
-window *earlier*, into the lead margin of data the matcher now keeps before the
-recorded start); the full window length is preserved, so shifting never cuts the
-measurement. The saved offset overrides the page fit mode for that spot
-(`SpotDetail.mode === 'manual'`, `manual_offset_s`), and the drawer calls
+**Manual per-spot shift + crop:** `SpotDetail` has a "Manual fit window" control
+(−30/−5/+5/+30 s nudges + a seconds input + Apply / Reset to auto) that calls
+`api.setSpotFit(id, nr, offsetS, endOffsetS?)` (`PUT …/spots/{nr}/fit`,
+`offsetS=null` resets both). The offset is **relative to the recorded start and may
+be negative** (shift the window *earlier*, into the lead margin of data the matcher
+keeps before the recorded start). A **"Crop the end too"** toggle reveals a second
+(end) offset so the window can be trimmed at **both ends** for spots disturbed at
+both ends; unticked, the window keeps its full length so a shift never cuts the
+measurement (Apply is disabled if the end isn't after the start). The saved window
+overrides the page fit mode for that spot (`SpotDetail.mode === 'manual'`,
+`manual_offset_s`/`manual_end_offset_s`, `fit_end_s`), and the drawer calls
 `onFitChanged` so Results refetches the table + graph (a `fitVersion` counter in
-Results deps).
+Results deps). **Out-of-window points are NOT discarded:** both plots draw them in
+the gas colour (faded) labelled "Outside window (recorded)" — not grey "excluded" —
+so the whole measurement line stays visible while picking the window; only spots
+with no readings/temperature are truly skipped (low R² never hides a spot).
+
+**Temperature confirmation:** the Confirm step is now two pages — `ConfirmNotes`
+("Approve & continue" saves notes, then routes to
+`/analyses/:id/confirm-temperature`) → `ConfirmTemperature` (reviews the parsed
+temperature via `api.getTemperature`: count, time range, min/max/mean, and a
+`TemperaturePlot` preview; "Confirm & compute" runs the match + fit and goes to
+Results). If the temperature can't be read (`available===false`) the page points the
+user back to Upload rather than failing at match time. Both pages sit under the
+"Confirm" `Stepper` step.
 
 **Deferred features keep their placeholders** end-to-end: `quality_check.available
 === false` → "quality check unavailable" (n8n, `TODO: later seminar`);
@@ -107,7 +122,7 @@ when `SENTRY_AUTH_TOKEN` is set and are never served publicly. Env (build-time):
 ## Layout (`src/`)
 ```
 api/          typed fetch client (client.ts) + types (the backend seam)
-pages/        Home, Upload, ConfirmNotes, Results, SpotDetail, ProcessingLog, ...
+pages/        Home, Upload, ConfirmNotes, ConfirmTemperature, Results, SpotDetail, ProcessingLog, ...
 components/    shared UI (Button, Card, Stepper, RegressionPlot, states, ...)
 hooks/        reusable hooks (e.g. useAsync)
 lib/          helpers — formatting, unit-ladder display, constants, cn()

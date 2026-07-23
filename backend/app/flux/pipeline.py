@@ -218,6 +218,7 @@ def fit_spot(
     pressure_hpa: float,
     mode: str = "auto",
     manual_offset_s: float | None = None,
+    manual_end_offset_s: float | None = None,
     anchor_ts: float | None = None,
 ) -> dict[str, GasResult]:
     """Fit both gases for a spot.
@@ -228,8 +229,10 @@ def fit_spot(
     fitting" option. When ``manual_offset_s`` is given it **overrides** both: the
     fit uses a fixed ``FIT_WINDOW_SECONDS`` window starting that many seconds
     **relative to the recorded start** — positive = later, **negative = earlier**
-    (the manual per-spot correction). ``readings`` needs ``timestamp``, ``co2_ppm``
-    and ``ch4_ppb``.
+    (the manual per-spot correction). ``manual_end_offset_s`` (also relative to the
+    recorded start) additionally crops the far edge, so both ends of the window are
+    hand-picked; without it the window keeps its default length. ``readings`` needs
+    ``timestamp``, ``co2_ppm`` and ``ch4_ppb``.
 
     ``anchor_ts`` is the recorded-start unix timestamp; all offsets (auto search,
     reported ``fit_offset_s``, and the manual shift) are measured from it, so a
@@ -275,9 +278,19 @@ def fit_spot(
     #    reported rel to the recorded start). A manual offset wins over auto/full;
     #    otherwise the page mode decides (whole recording vs best/shortened window).
     if manual_offset_s is not None:
-        win = float(C.FIT_WINDOW_SECONDS)
         lo = anchor_rel + float(manual_offset_s)
-        hi = lo + win
+        # A manual END offset crops the far edge too (both ends chosen by hand,
+        # for spots where the start AND the end of the measurement are disturbed).
+        # Without it the window keeps its default FIT_WINDOW_SECONDS length (a
+        # plain shift). A malformed end (<= start) falls back to the default length.
+        if (
+            manual_end_offset_s is not None
+            and (anchor_rel + float(manual_end_offset_s)) > lo
+        ):
+            hi = anchor_rel + float(manual_end_offset_s)
+        else:
+            hi = lo + float(C.FIT_WINDOW_SECONDS)
+        win = hi - lo
         shortened = False
         offset = float(manual_offset_s)
         start_report, stop_report = offset, offset + win

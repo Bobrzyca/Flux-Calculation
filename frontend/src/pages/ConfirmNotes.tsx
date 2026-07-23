@@ -104,11 +104,7 @@ export function ConfirmNotes() {
     if (hardErrorCount > 0) return
     setRunError(null)
     setRunning(true)
-    const stepLabels = [
-      'Saving your confirmed notes',
-      'Matching temperature & pressure to each spot',
-      'Fitting CO₂ and CH₄ slopes',
-    ]
+    const stepLabels = ['Saving your confirmed notes']
     const stepsAt = (activeIndex: number): PipelineStep[] =>
       stepLabels.map((label, i) => ({
         label,
@@ -118,13 +114,10 @@ export function ConfirmNotes() {
     try {
       setSteps(stepsAt(0))
       await api.saveNotes(id!, rows)
-      setSteps(stepsAt(1))
-      await sleep(600)
-      setSteps(stepsAt(2))
-      await api.matchAndCompute(id!)
       setSteps((s) => s.map((x) => ({ ...x, status: 'done' })))
-      await sleep(300)
-      navigate(`/analyses/${id}/results`)
+      await sleep(200)
+      // Next: review the parsed temperature before matching/fitting.
+      navigate(`/analyses/${id}/confirm-temperature`)
     } catch (err) {
       // Never leave the user stuck on the spinner: surface the error and let
       // them fix it (e.g. an unreadable temperature file) and retry.
@@ -144,7 +137,7 @@ export function ConfirmNotes() {
       <div className="flex flex-col gap-8">
         <Stepper current="Confirm" furthest="Confirm" />
         <div className="py-8">
-          <PipelineProgress steps={steps} title="Matching and fitting…" />
+          <PipelineProgress steps={steps} title="Saving your notes…" />
         </div>
       </div>
     )
@@ -367,7 +360,7 @@ export function ConfirmNotes() {
               onClick={approve}
               disabled={hardErrorCount > 0 || rows.length === 0}
             >
-              Approve &amp; match
+              Approve &amp; continue
             </Button>
           </div>
         </>

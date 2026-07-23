@@ -15,6 +15,7 @@ import {
   buildNotes,
   buildResults,
   buildSpotDetail,
+  buildTemperatureSummary,
   buildTimeseries,
 } from '@/test/mockData'
 
@@ -22,7 +23,7 @@ let analyses: Analysis[] = []
 let notesStore = new Map<string, ParsedNotes>()
 // Saved per-spot manual fit offsets, keyed `${analysisId}:${nr}` (mirrors the
 // backend's persisted Spot.manual_offset_s).
-let manualOffsets = new Map<string, number>()
+let manualOffsets = new Map<string, { start: number; end: number | null }>()
 let idCounter = 1
 
 export function resetApiMock(): void {
@@ -104,11 +105,16 @@ function spotDetailWithOverrides(
 ) {
   const manual = manualOffsets.get(`${id}:${nr}`)
   if (manual !== undefined) {
+    const window =
+      manual.end !== null ? manual.end - manual.start : detail.fit_window_s
     return {
       ...detail,
       mode: 'manual' as const,
-      fit_offset_s: manual,
-      manual_offset_s: manual,
+      fit_offset_s: manual.start,
+      fit_window_s: window,
+      fit_end_s: manual.start + window,
+      manual_offset_s: manual.start,
+      manual_end_offset_s: manual.end,
     }
   }
   if (mode === 'full') {
@@ -211,6 +217,9 @@ async function handle(
     return json({ status: 'complete' })
   }
 
+  const tempMatch = path.match(/^\/analyses\/([^/]+)\/temperature$/)
+  if (tempMatch) return json(buildTemperatureSummary())
+
   const resultsMatch = path.match(/^\/analyses\/([^/]+)\/results$/)
   if (resultsMatch) return json(buildResults())
 
@@ -219,12 +228,15 @@ async function handle(
     const [, id, nrStr] = fitMatch
     const detail = buildSpotDetail(Number(nrStr))
     if (!detail) return json(null)
-    const { offset_s } = JSON.parse(String(init?.body ?? '{}')) as {
+    const { offset_s, end_offset_s } = JSON.parse(
+      String(init?.body ?? '{}'),
+    ) as {
       offset_s: number | null
+      end_offset_s?: number | null
     }
     const key = `${id}:${nrStr}`
     if (offset_s === null) manualOffsets.delete(key)
-    else manualOffsets.set(key, offset_s)
+    else manualOffsets.set(key, { start: offset_s, end: end_offset_s ?? null })
     return json(spotDetailWithOverrides(detail, id, Number(nrStr), 'auto'))
   }
 

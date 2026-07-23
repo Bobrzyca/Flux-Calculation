@@ -94,10 +94,13 @@ export function TimeSeriesPlot({
         customdata: outNr,
         mode: 'markers',
         type: 'scattergl',
-        name: 'Outside fit window',
-        marker: { color: VIZ.muted, size: 3, opacity: 0.5 },
+        // Still-recorded points that fall outside the fit window — drawn in the
+        // gas colour (faded), NOT grey, so the whole measurement line stays
+        // visible and readable while adjusting the window. They are not discarded.
+        name: 'Outside window (recorded)',
+        marker: { color, size: 3, opacity: 0.35 },
         hovertemplate:
-          'Spot %{customdata}<br>%{x|%H:%M:%S}: %{y}<extra>excluded</extra>',
+          'Spot %{customdata}<br>%{x|%H:%M:%S}: %{y}<extra>outside window</extra>',
       },
       {
         x: inX,
@@ -105,10 +108,10 @@ export function TimeSeriesPlot({
         customdata: inNr,
         mode: 'markers',
         type: 'scattergl',
-        name: 'Fitted points',
+        name: 'In fit window',
         marker: { color, size: 4 },
         hovertemplate:
-          'Spot %{customdata}<br>%{x|%H:%M:%S}: %{y}<extra></extra>',
+          'Spot %{customdata}<br>%{x|%H:%M:%S}: %{y}<extra>in fit window</extra>',
       },
       {
         x: lineX,

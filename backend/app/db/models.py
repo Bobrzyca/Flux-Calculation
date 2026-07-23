@@ -62,9 +62,13 @@ class Spot(SQLModel, table=True):
     location_desc: str = ""
     start_time: str  # "HH:MM:SS"
     stop_time: str  # "HH:MM:SS"
-    # Manual fit-window override: seconds after the spot's first reading where the
+    # Manual fit-window override: seconds relative to the recorded start where the
     # fit window should start. None = use the automatic best-window selection.
     manual_offset_s: float | None = Field(default=None)
+    # Optional manual END of the fit window (also relative to the recorded start),
+    # for cropping the far edge too. None with a set offset = keep the default
+    # window length (a plain shift). Both None = automatic.
+    manual_end_offset_s: float | None = Field(default=None)
 
     analysis: Analysis | None = Relationship(back_populates="spots")
     readings: list["Reading"] = Relationship(back_populates="spot")  # noqa: UP037

@@ -228,6 +228,7 @@ def run_match(
             matched.temperature_used,
             pressure_for_flux,
             manual_offset_s=spot.manual_offset_s,
+            manual_end_offset_s=spot.manual_end_offset_s,
         )
         chosen = next(iter(results.values()))
         # NB: deliberately NOT named `offset` — that variable is the analysis's

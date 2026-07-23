@@ -61,15 +61,38 @@ export function SpotDetail({
   // (reset when the spot / mode / applied value changes) so the user nudges from
   // where the fit actually sits.
   const [offsetInput, setOffsetInput] = useState('')
+  // Optional END-crop: when on, the far edge is hand-picked too (both ends
+  // trimmed), for spots where the start AND the end of the measurement are
+  // disturbed. When off, the window keeps its full length (a plain shift).
+  const [cropEnd, setCropEnd] = useState(false)
+  const [endInput, setEndInput] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => {
-    if (data) setOffsetInput(String(Math.round(data.fit_offset_s)))
-  }, [data?.nr, data?.mode, data?.fit_offset_s])
+    if (!data) return
+    setOffsetInput(String(Math.round(data.fit_offset_s)))
+    setEndInput(String(Math.round(data.fit_end_s)))
+    setCropEnd(data.manual_end_offset_s !== null)
+  }, [
+    data?.nr,
+    data?.mode,
+    data?.fit_offset_s,
+    data?.fit_end_s,
+    data?.manual_end_offset_s,
+  ])
 
-  async function saveOffset(value: number | null) {
+  const startVal = Number(offsetInput)
+  const endVal = Number(endInput)
+  const endInvalid =
+    cropEnd &&
+    (endInput.trim() === '' || Number.isNaN(endVal) || endVal <= startVal)
+
+  async function saveOffset(
+    value: number | null,
+    endValue: number | null = null,
+  ) {
     setSaving(true)
     try {
-      await api.setSpotFit(analysisId, nr, value)
+      await api.setSpotFit(analysisId, nr, value, endValue)
       reload()
       onFitChanged?.()
     } finally {
@@ -78,15 +101,21 @@ export function SpotDetail({
   }
 
   function applyOffset() {
-    const v = Number(offsetInput)
     // Negative is allowed: it shifts the window EARLIER than the recorded start.
-    if (offsetInput.trim() === '' || Number.isNaN(v)) return
-    void saveOffset(Math.round(v))
+    if (offsetInput.trim() === '' || Number.isNaN(startVal)) return
+    if (cropEnd && endInvalid) return
+    const end = cropEnd ? Math.round(endVal) : null
+    void saveOffset(Math.round(startVal), end)
   }
 
   function nudge(delta: number) {
     const base = Number(offsetInput)
     setOffsetInput(String((Number.isNaN(base) ? 0 : base) + delta))
+  }
+
+  function nudgeEnd(delta: number) {
+    const base = Number(endInput)
+    setEndInput(String((Number.isNaN(base) ? 0 : base) + delta))
   }
 
   const idx = spotNrs.indexOf(nr)
@@ -226,26 +255,94 @@ export function SpotDetail({
               >
                 +30 s
               </Button>
-              <Button size="sm" onClick={applyOffset} disabled={saving}>
+              <Button
+                size="sm"
+                onClick={applyOffset}
+                disabled={saving || (cropEnd && endInvalid)}
+              >
                 Apply
               </Button>
               {data.manual_offset_s !== null && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => void saveOffset(null)}
+                  onClick={() => void saveOffset(null, null)}
                   disabled={saving}
                 >
                   Reset to auto
                 </Button>
               )}
             </div>
+
+            {/* Optional crop of the far edge, for spots disturbed at BOTH ends. */}
+            <label className="mt-3 flex items-center gap-2 text-sm text-text">
+              <input
+                type="checkbox"
+                checked={cropEnd}
+                onChange={(e) => setCropEnd(e.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              Crop the end too (both ends disturbed)
+            </label>
+            {cropEnd && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted">End at</span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => nudgeEnd(-30)}
+                  aria-label="Move window end 30 seconds earlier"
+                >
+                  −30 s
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => nudgeEnd(-5)}
+                  aria-label="Move window end 5 seconds earlier"
+                >
+                  −5 s
+                </Button>
+                <input
+                  type="number"
+                  value={endInput}
+                  onChange={(e) => setEndInput(e.target.value)}
+                  aria-label="Fit window end offset (seconds from the recorded start)"
+                  className="h-9 w-24 rounded-lg border border-border bg-surface px-2 text-sm tabular-nums text-text focus:border-primary"
+                />
+                <span className="text-sm text-muted">s</span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => nudgeEnd(5)}
+                  aria-label="Move window end 5 seconds later"
+                >
+                  +5 s
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => nudgeEnd(30)}
+                  aria-label="Move window end 30 seconds later"
+                >
+                  +30 s
+                </Button>
+                {endInvalid && (
+                  <span className="text-xs text-danger">
+                    End must be after the start.
+                  </span>
+                )}
+              </div>
+            )}
+
             <p className="mt-2 text-xs text-muted">
               Move where the {Math.round(data.fit_window_s)}-second window
               starts, relative to the recorded start — use a negative value to
-              shift it earlier. The window keeps its full length, so shifting
-              never cuts your measurement. For this spot only; saved — the
-              results table and export follow.
+              shift it earlier. Tick <em>Crop the end too</em> to also trim the
+              far edge when both ends of the measurement are disturbed;
+              otherwise the window keeps its length, so a shift never cuts your
+              measurement. For this spot only; saved — the results table and
+              export follow.
             </p>
           </div>
 

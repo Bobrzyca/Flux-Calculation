@@ -22,6 +22,14 @@ from app.parsing.encoding import detect_encoding
 _DATE_KEYS = ("date", "data", "datum", "fecha", "dzień", "dzien", "day")
 _TIME_KEYS = ("time", "godzina", "godz", "hour", "czas")
 
+# A real header row always names a date/time column, so we locate it by the first
+# line/row carrying one of these — skipping any preamble above it (e.g. a
+# "MeterID  0x03423E62" line, an instrument serial, a "Software Version" line).
+_HEADER_HINT_KEYS = _DATE_KEYS + _TIME_KEYS
+# How many lines/rows to scan for the header before giving up (real preambles are
+# a handful of lines; bounds a huge non-tabular file).
+_MAX_HEADER_SCAN = 200
+
 # Leading date triple A<sep>B<sep>C with . / or - separators (year last, or first
 # for ISO). Used only to infer the day/month/year order.
 _DATE_LEAD = re.compile(r"(\d{1,4})\s*[./\-]\s*(\d{1,2})\s*[./\-]\s*(\d{1,4})")
@@ -85,30 +93,84 @@ def read_table(path: str | Path) -> pd.DataFrame:
     )
 
 
+def _looks_like_header(cells: list[str]) -> bool:
+    """True if a row names a date/time column (so it's the header, not preamble)."""
+    return any(
+        any(k in str(cell).strip().lower() for k in _HEADER_HINT_KEYS) for cell in cells
+    )
+
+
 def _read_excel(path: str | Path) -> pd.DataFrame:
-    return pd.read_excel(path, engine="openpyxl")
+    """Read an Excel workbook, locating the header row (a preamble may sit above
+    it) and re-keying the data below. Cells are read as strings so an Excel
+    date/number cast can't hide the header or confuse the numeric coercion."""
+    frame = pd.read_excel(path, header=None, dtype=str, engine="openpyxl")
+    header_index = 0
+    for index in range(min(len(frame), _MAX_HEADER_SCAN)):
+        if _looks_like_header(frame.iloc[index].tolist()):
+            header_index = index
+            break
+    header = [str(c).strip() for c in frame.iloc[header_index].tolist()]
+    data = frame.iloc[header_index + 1 :].copy()
+    data.columns = header
+    return data.reset_index(drop=True)
+
+
+def _find_header_line_index(path: str | Path, encoding: str | None) -> int:
+    """0-based index of the first line naming a date/time column (else 0)."""
+    try:
+        with open(path, encoding=encoding) as f:
+            for index in range(_MAX_HEADER_SCAN):
+                line = f.readline()
+                if line == "":
+                    break
+                low = line.lower()
+                if any(k in low for k in _HEADER_HINT_KEYS):
+                    return index
+    except OSError:
+        return 0
+    return 0
 
 
 def _read_csv(path: str | Path) -> pd.DataFrame:
-    # Sniff the encoding first (Windows exports are often cp1250/UTF-16), then the
-    # delimiter: tab / ; / , / runs of 2+ spaces (which keep the single space
-    # inside a "YYYY-MM-DD HH:MM:SS" datetime intact).
+    # Sniff the encoding first (Windows exports are often cp1250/UTF-16), then find
+    # the header line (skipping any preamble), then the delimiter: tab / ; / , /
+    # runs of 2+ spaces (which keep the single space inside a datetime intact).
+    # ``on_bad_lines="skip"`` tolerates ragged rows — real logger exports carry
+    # short marker rows (e.g. "Measurement_Start") with fewer columns.
     encoding = detect_encoding(path)
+    skip = _find_header_line_index(path, encoding)
     for sep in ("\t", ";", ","):
         try:
-            frame = pd.read_csv(path, sep=sep, encoding=encoding)
+            frame = pd.read_csv(
+                path, sep=sep, encoding=encoding, skiprows=skip, on_bad_lines="skip"
+            )
         except ValueError:  # pandas ParserError subclasses ValueError
             continue
         if frame.shape[1] > 1:
             return frame
     try:
-        frame = pd.read_csv(path, sep=r"\s{2,}", engine="python", encoding=encoding)
+        frame = pd.read_csv(
+            path,
+            sep=r"\s{2,}",
+            engine="python",
+            encoding=encoding,
+            skiprows=skip,
+            on_bad_lines="skip",
+        )
         if frame.shape[1] > 1:
             return frame
     except ValueError:
         pass
     # Last resort: let pandas sniff the delimiter itself.
-    return pd.read_csv(path, sep=None, engine="python", encoding=encoding)
+    return pd.read_csv(
+        path,
+        sep=None,
+        engine="python",
+        encoding=encoding,
+        skiprows=skip,
+        on_bad_lines="skip",
+    )
 
 
 def _find_by_keys(

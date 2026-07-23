@@ -22,6 +22,52 @@ def test_drop_log_messages_silent_when_nothing_dropped() -> None:
     assert _drop_log_messages({}) == []
 
 
+def test_put_notes_preserves_manual_offset_for_unchanged_rows(
+    client: TestClient, session: object
+) -> None:
+    """Re-confirming notes (e.g. after adding a pressure file later) must NOT
+    reset a manually-picked fit window for spots whose row is unchanged — only
+    the results should change. The offset is dropped only if the row's times
+    change (the window would no longer mean the same thing)."""
+    from sqlmodel import Session, select
+
+    from app.db.models import Spot
+
+    analysis_id = _create_and_match(client)
+    client.put(f"/api/analyses/{analysis_id}/spots/1/fit", json={"offset_s": 75})
+
+    rows = client.get(f"/api/analyses/{analysis_id}/notes").json()["rows"]
+    # Re-submit the notes unchanged (what the Confirm step does on every re-run).
+    put = client.put(f"/api/analyses/{analysis_id}/notes", json=rows)
+    assert put.status_code == 200
+
+    assert isinstance(session, Session)
+    spots = session.exec(select(Spot).where(Spot.analysis_id == analysis_id)).all()
+    s1 = next(s for s in spots if s.nr == 1)
+    assert s1.manual_offset_s == 75.0  # preserved across re-confirm
+
+
+def test_put_notes_resets_offset_when_row_time_changes(
+    client: TestClient, session: object
+) -> None:
+    from sqlmodel import Session, select
+
+    from app.db.models import Spot
+
+    analysis_id = _create_and_match(client)
+    client.put(f"/api/analyses/{analysis_id}/spots/1/fit", json={"offset_s": 75})
+
+    rows = client.get(f"/api/analyses/{analysis_id}/notes").json()["rows"]
+    row1 = next(r for r in rows if r["nr"] == 1)
+    row1["start_time"] = "09:40:00"  # move the window -> offset no longer applies
+    client.put(f"/api/analyses/{analysis_id}/notes", json=rows)
+
+    assert isinstance(session, Session)
+    spots = session.exec(select(Spot).where(Spot.analysis_id == analysis_id)).all()
+    s1 = next(s for s in spots if s.nr == 1)
+    assert s1.manual_offset_s is None  # reset because the row changed
+
+
 def test_shift_hhmmss_accepts_hhmm() -> None:
     # Spot times saved without seconds must not crash the window display.
     assert _shift_hhmmss("09:05", 30) == "09:05:30"
@@ -187,6 +233,42 @@ def test_manual_offset_window_matches_between_detail_and_timeseries(
         assert any(p["in_window"] for p in ts_pts)
 
 
+def test_set_manual_window_crop_both_ends(client: TestClient) -> None:
+    # Cropping: a manual start AND end offset trims both edges of the window.
+    analysis_id = _create_and_match(client)
+    base = f"/api/analyses/{analysis_id}"
+
+    put = client.put(f"{base}/spots/1/fit", json={"offset_s": 30, "end_offset_s": 210})
+    assert put.status_code == 200
+    detail = put.json()
+    assert detail["mode"] == "manual"
+    assert detail["manual_offset_s"] == 30.0
+    assert detail["manual_end_offset_s"] == 210.0
+    # Window length is the crop, not the default 300 s.
+    assert detail["fit_window_s"] == 180.0
+    assert detail["fit_offset_s"] == 30.0
+    assert detail["fit_end_s"] == 210.0
+
+    # Cropping survives a fresh GET and flows into the results table.
+    again = client.get(f"{base}/spots/1").json()
+    assert again["manual_end_offset_s"] == 210.0
+
+    # A reset clears both ends.
+    reset = client.put(f"{base}/spots/1/fit", json={"offset_s": None}).json()
+    assert reset["manual_offset_s"] is None
+    assert reset["manual_end_offset_s"] is None
+
+
+def test_set_manual_window_end_before_start_422(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.put(
+        f"/api/analyses/{analysis_id}/spots/1/fit",
+        json={"offset_s": 200, "end_offset_s": 100},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "bad_window"
+
+
 def test_set_manual_offset_unknown_spot_404(client: TestClient) -> None:
     analysis_id = _create_and_match(client)
     resp = client.put(
@@ -200,6 +282,23 @@ def test_spot_detail_skipped_is_null(client: TestClient) -> None:
     resp = client.get(f"/api/analyses/{analysis_id}/spots/3")  # empty-window skip
     assert resp.status_code == 200
     assert resp.json() is None
+
+
+def test_temperature_summary_endpoint(client: TestClient) -> None:
+    analysis_id = _create_and_match(client)
+    resp = client.get(f"/api/analyses/{analysis_id}/temperature")
+    assert resp.status_code == 200
+    summary = resp.json()
+    assert summary["available"] is True
+    assert summary["count"] > 0
+    assert summary["min_c"] is not None and summary["max_c"] is not None
+    assert summary["min_c"] <= summary["mean_c"] <= summary["max_c"]
+    assert len(summary["points"]) > 0
+    assert summary["start_unix"] <= summary["end_unix"]
+
+
+def test_temperature_summary_unknown_analysis_404(client: TestClient) -> None:
+    assert client.get("/api/analyses/nope/temperature").status_code == 404
 
 
 def test_log_endpoint(client: TestClient) -> None:

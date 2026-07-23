@@ -21,6 +21,7 @@ import type {
   ParsedNotes,
   ResultsPayload,
   SpotDetail,
+  TemperatureSummary,
   Timeseries,
 } from '@/api/types'
 import { logger } from '@/lib/logger'
@@ -205,6 +206,11 @@ export const api = {
     return (await res.json()) as ParsedNotes
   },
 
+  /** GET /analyses/{id}/temperature — parsed-temperature review for the confirm page. */
+  getTemperature(id: string): Promise<TemperatureSummary> {
+    return getJson<TemperatureSummary>(`/analyses/${id}/temperature`)
+  },
+
   /** POST /analyses/{id}/match (approve -> match + fit) */
   async matchAndCompute(id: string): Promise<void> {
     await request(`/analyses/${id}/match`, { method: 'POST' })
@@ -244,11 +250,12 @@ export const api = {
     id: string,
     nr: number,
     offsetS: number | null,
+    endOffsetS: number | null = null,
   ): Promise<SpotDetail | null> {
     const res = await request(`/analyses/${id}/spots/${nr}/fit`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ offset_s: offsetS }),
+      body: JSON.stringify({ offset_s: offsetS, end_offset_s: endOffsetS }),
     })
     return (await res.json()) as SpotDetail | null
   },

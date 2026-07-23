@@ -80,7 +80,9 @@ def parse_pressure(
             "pressure_hpa": to_float_series(raw[pr_col]) * factor,
         }
     )
-    out = out.dropna(subset=["timestamp"]).sort_values("timestamp", ignore_index=True)
+    out = out.dropna(subset=["timestamp", "pressure_hpa"]).sort_values(
+        "timestamp", ignore_index=True
+    )
     return [
         PressureReading(timestamp=row.timestamp, pressure_hpa=row.pressure_hpa)
         for row in out.itertuples(index=False)

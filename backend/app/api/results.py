@@ -18,6 +18,7 @@ from app.flux.pipeline import GAS_COLUMN, GasResult, fit_spot
 from app.matching.match import note_time_to_unix, parse_note_time
 from app.matching.timeshift import apply_offset
 from app.parsing.li7810 import parse_li7810
+from app.parsing.temperature import parse_temperature
 from app.schemas.results import (
     ContextPoint,
     FitWindow,
@@ -31,6 +32,8 @@ from app.schemas.results import (
     SpotDetail,
     SpotFitUpdate,
     SpotResult,
+    TemperaturePoint,
+    TemperatureSummary,
     Timeseries,
     TSGas,
     TSLinePoint,
@@ -59,6 +62,51 @@ def _get_analysis(session: Session, analysis_id: str) -> Analysis:
     if analysis is None:
         raise api_error(404, "not_found", f"Analysis {analysis_id} not found.")
     return analysis
+
+
+@router.get("/analyses/{analysis_id}/temperature", response_model=TemperatureSummary)
+def get_temperature(
+    analysis_id: str, session: Session = Depends(get_session)
+) -> TemperatureSummary:
+    """Review the parsed temperature file before matching (the confirm page).
+
+    Returns count, time range, min/max/mean °C, and a downsampled preview series.
+    ``available=False`` (with a message) when no temperature file is stored or it
+    can't be read — so the page can point the user back to Upload rather than
+    failing later at match time.
+    """
+    analysis = _get_analysis(session, analysis_id)
+    path = storage.find_stored(analysis.id, "temperature")
+    if path is None:
+        return TemperatureSummary(
+            available=False, message="No temperature file has been uploaded yet."
+        )
+    try:
+        df = parse_temperature(path)
+    except (ValueError, OSError) as exc:
+        return TemperatureSummary(
+            available=False,
+            message=f"Couldn't read the temperature file: {exc}",
+        )
+    ts = df["timestamp"].to_numpy(dtype=float)
+    temps = df["temperature_c"].to_numpy(dtype=float)
+    # Uniformly thin the preview so a long log doesn't make the plot stutter.
+    cap = C.TIMESERIES_MAX_BACKGROUND_POINTS
+    step = max(1, len(df) // cap)
+    idx = list(range(0, len(df), step))
+    if idx and idx[-1] != len(df) - 1:
+        idx.append(len(df) - 1)
+    points = [TemperaturePoint(t_unix=ts[i], value=temps[i]) for i in idx]
+    return TemperatureSummary(
+        available=True,
+        count=len(df),
+        start_unix=float(ts[0]),
+        end_unix=float(ts[-1]),
+        min_c=float(temps.min()),
+        max_c=float(temps.max()),
+        mean_c=float(temps.mean()),
+        points=points,
+    )
 
 
 def _check_fit_mode(fit_mode: str) -> str:
@@ -139,6 +187,7 @@ def _fit_results(
     readings: list[Reading],
     mode: str = "auto",
     manual_offset_s: float | None = None,
+    manual_end_offset_s: float | None = None,
     anchor_ts: float | None = None,
 ) -> dict[str, GasResult] | None:
     """Recompute both gases from persisted readings; None if unfittable.
@@ -168,6 +217,7 @@ def _fit_results(
         pressure,
         mode=mode,
         manual_offset_s=manual_offset_s,
+        manual_end_offset_s=manual_end_offset_s,
         anchor_ts=anchor_ts,
     )
 
@@ -228,6 +278,7 @@ def get_results(
             readings,
             mode=fit_mode,
             manual_offset_s=spot.manual_offset_s,
+            manual_end_offset_s=spot.manual_end_offset_s,
             anchor_ts=_anchor_ts(analysis, spot),
         )
         if fits is None:
@@ -403,6 +454,7 @@ def _build_spot_detail(
         readings,
         mode=fit_mode,
         manual_offset_s=spot.manual_offset_s,
+        manual_end_offset_s=spot.manual_end_offset_s,
         anchor_ts=_anchor_ts(analysis, spot),
     )
     if fits is None:
@@ -429,8 +481,10 @@ def _build_spot_detail(
         mode=mode,
         fit_offset_s=co2.fit_offset_s,
         fit_window_s=co2.fit_window_s,
+        fit_end_s=co2.fit_offset_s + co2.fit_window_s,
         window_shortened=co2.window_shortened,
         manual_offset_s=spot.manual_offset_s,
+        manual_end_offset_s=spot.manual_end_offset_s,
         flags=_spot_flags(fits, no_pressure=readings[0].pressure_used is None),
         gases=gases,
     )
@@ -466,6 +520,7 @@ def _rewrite_spot_flux_results(
         analysis,
         readings,
         manual_offset_s=spot.manual_offset_s,
+        manual_end_offset_s=spot.manual_end_offset_s,
         anchor_ts=_anchor_ts(analysis, spot),
     )
     if fits is None:
@@ -502,22 +557,44 @@ def set_spot_fit(
     body: SpotFitUpdate,
     session: Session = Depends(get_session),
 ) -> SpotDetail | None:
-    """Set (``offset_s``) or clear (``offset_s=null``) a spot's manual fit-window
-    offset — the per-spot correction for a mis-placed automatic window. ``offset_s``
-    is relative to the recorded start: positive = later, **negative = earlier** (the
-    fit window can move into the lead margin of data before the recorded start).
-    Persists the override, rewrites the spot's ``FluxResult`` (so results + export
-    follow), logs the change, and returns the recomputed detail."""
+    """Set (``offset_s``) or clear (``offset_s=null``) a spot's manual fit window —
+    the per-spot correction for a mis-placed automatic window. ``offset_s`` is
+    relative to the recorded start: positive = later, **negative = earlier** (the
+    window can move into the lead margin of data before the recorded start). The
+    optional ``end_offset_s`` crops the far edge too (both ends chosen by hand);
+    omit it to keep the default window length. Persists the override, rewrites the
+    spot's ``FluxResult`` (so results + export follow), logs the change, and returns
+    the recomputed detail."""
     analysis = _get_analysis(session, analysis_id)
     spot = next((s for s in analysis.spots if s.nr == nr), None)
     if spot is None:
         raise api_error(404, "not_found", f"Spot {nr} not found.")
 
+    # end_offset only applies alongside a start offset, and must sit after it.
+    end_offset = body.end_offset_s if body.offset_s is not None else None
+    if (
+        end_offset is not None
+        and body.offset_s is not None
+        and end_offset <= body.offset_s
+    ):
+        raise api_error(
+            422,
+            "bad_window",
+            "The window end must be after its start.",
+            field="end_offset_s",
+        )
+
     spot.manual_offset_s = body.offset_s
+    spot.manual_end_offset_s = end_offset
     session.add(spot)
     _rewrite_spot_flux_results(session, analysis, spot)
     if body.offset_s is None:
         message = f"Spot {nr}: fit reset to automatic window"
+    elif end_offset is not None:
+        message = (
+            f"Spot {nr}: manual fit window cropped to "
+            f"{int(body.offset_s)}–{int(end_offset)} s from the recorded start"
+        )
     else:
         direction = "later" if body.offset_s >= 0 else "earlier"
         message = (
@@ -560,6 +637,7 @@ def get_timeseries(
             readings,
             mode=fit_mode,
             manual_offset_s=spot.manual_offset_s,
+            manual_end_offset_s=spot.manual_end_offset_s,
             anchor_ts=_anchor_ts(analysis, spot),
         )
         t0 = readings[0].timestamp

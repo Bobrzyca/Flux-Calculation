@@ -68,6 +68,16 @@ def put_notes(
     if analysis is None:
         raise api_error(404, "not_found", f"Analysis {analysis_id} not found.")
 
+    # Remember each spot's manually-picked fit window, keyed by its identity
+    # (nr + window times), so re-confirming notes — e.g. after adding a pressure
+    # file later — does NOT wipe a manual window whose row is unchanged. Only the
+    # results should change then. If a row's times change, the offset would point
+    # somewhere else, so it is intentionally dropped for that spot.
+    prior_offsets = {
+        (s.nr, s.start_time, s.stop_time): (s.manual_offset_s, s.manual_end_offset_s)
+        for s in analysis.spots
+    }
+
     # Replace the spot set with the confirmed rows (handles added/deleted rows).
     for spot in list(analysis.spots):
         for reading in spot.readings:
@@ -90,6 +100,9 @@ def put_notes(
         for r in rows
     ]
     for r in parsed:
+        prior_off, prior_end = prior_offsets.get(
+            (r.nr, r.start_time, r.stop_time), (None, None)
+        )
         session.add(
             Spot(
                 analysis_id=analysis_id,
@@ -99,6 +112,8 @@ def put_notes(
                 location_desc=r.location,
                 start_time=r.start_time,
                 stop_time=r.stop_time,
+                manual_offset_s=prior_off,
+                manual_end_offset_s=prior_end,
             )
         )
     session.commit()
