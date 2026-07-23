@@ -31,12 +31,14 @@ from app.parsing.tabular import to_float_series
 REQUIRED_COLUMNS = frozenset({"SECONDS", "CO2", "CH4"})
 
 # CO₂ readings outside this (ppm) range are treated as invalid sensor spikes and
-# dropped (set to nan) before fitting. The upper bound mirrors the R
-# method-of-record's ``subset(fx, CO2 < 1500)`` step; ambient is ~400–500 ppm and a
-# chamber rise stays well under 1500, so values ≥ 1500 are spurious. Negative CO₂
-# is physically impossible (ambient never drops below ~350 ppm), so anything < 0
-# is an instrument artefact — common on "noisy" DIAG-flagged rows we now keep.
-MAX_VALID_CO2_PPM = 1500.0
+# dropped (set to nan) before fitting. This is the DEFAULT upper bound; it is
+# **configurable** (``settings.max_valid_co2_ppm`` / env ``MAX_VALID_CO2_PPM``,
+# threaded in as ``parse_li7810(max_co2_ppm=…)``) because high-flux substrates
+# (manure, very active soils) can genuinely exceed it over a closure. The R
+# method-of-record used 1500; the default was raised to 5000. Negative CO₂ is
+# physically impossible (ambient never drops below ~350 ppm), so anything < 0 is
+# an instrument artefact — common on "noisy" DIAG-flagged rows we now keep.
+MAX_VALID_CO2_PPM = 5000.0
 MIN_VALID_CO2_PPM = 0.0
 
 # CH₄ plausibility range (ppb). Ambient is ~1900–2000; a real chamber rise on a
@@ -168,14 +170,18 @@ def looks_like_li7810(path: str | Path) -> bool:
     return _read_raw(path) is not None
 
 
-def parse_li7810(path: str | Path) -> pd.DataFrame:
+def parse_li7810(
+    path: str | Path, *, max_co2_ppm: float = MAX_VALID_CO2_PPM
+) -> pd.DataFrame:
     """Parse a LI-7810 log into columns ``timestamp``, ``co2_ppm``, ``ch4_ppb``.
 
     Accepts the tab-delimited text export (any common encoding) or the same
     layout saved as ``.xlsx``/``.xlsm``. Timestamps are unix seconds (float).
     Concentrations keep ``nan`` as-is. Rows without a usable timestamp (a LI-COR
     units row after the header, blank lines) are dropped; column matching is
-    case-insensitive.
+    case-insensitive. ``max_co2_ppm`` is the upper CO₂ plausibility bound (the
+    configurable ``settings.max_valid_co2_ppm``); readings at or above it are
+    dropped as sensor artefacts.
     """
     raw = _read_raw(path)
     if raw is None:
@@ -209,7 +215,7 @@ def parse_li7810(path: str | Path) -> pd.DataFrame:
     # row) can't distort a fit — without discarding the other, good gas. Count the
     # drops (values that WERE present and now fall out of range) so the match step
     # can log them — they used to vanish silently.
-    co2_bad = (df["co2_ppm"] >= MAX_VALID_CO2_PPM) | (df["co2_ppm"] < MIN_VALID_CO2_PPM)
+    co2_bad = (df["co2_ppm"] >= max_co2_ppm) | (df["co2_ppm"] < MIN_VALID_CO2_PPM)
     ch4_bad = (df["ch4_ppb"] >= MAX_VALID_CH4_PPB) | (df["ch4_ppb"] < MIN_VALID_CH4_PPB)
     n_co2_out_of_range = int(co2_bad.sum())
     n_ch4_out_of_range = int(ch4_bad.sum())

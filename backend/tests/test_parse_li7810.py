@@ -135,20 +135,42 @@ def test_parse_is_case_insensitive_on_columns(tmp_path: Path) -> None:
 
 
 def test_high_co2_spikes_dropped(tmp_path: Path) -> None:
-    # CO2 >= 1500 ppm are sensor spikes and are dropped (nan), like the R script.
+    # CO2 at/above the plausibility bound (default 5000 ppm) are sensor spikes and
+    # are dropped (nan). A real high-flux rise (e.g. 3000 ppm) is now KEPT — the
+    # bound was raised from the R script's 1500 and is configurable.
     f = tmp_path / "hi.txt"
     f.write_text(
         "Model:\tLI-7810\n"
         "SECONDS\tCO2\tCH4\n"
         "1782985020\t420.0\t1990.0\n"
         "1782985021\t99999.0\t1991.0\n"
-        "1782985022\t421.0\t1992.0\n",
+        "1782985022\t3000.0\t1992.0\n",
         encoding="utf-8",
     )
     df = parse_li7810(f)
     assert df["co2_ppm"].isna().iloc[1]  # the 99999 spike -> nan
     assert df["co2_ppm"].iloc[0] == 420.0
+    assert df["co2_ppm"].iloc[2] == 3000.0  # high-flux value kept (< 5000)
     assert df["ch4_ppb"].iloc[1] == 1991.0  # CH4 untouched
+
+
+def test_co2_upper_bound_is_configurable(tmp_path: Path) -> None:
+    # The upper CO2 bound can be overridden (settings.max_valid_co2_ppm), e.g. to
+    # keep the R method's stricter 1500 ppm cut on a specific campaign.
+    f = tmp_path / "cfg.txt"
+    f.write_text(
+        "Model:\tLI-7810\n"
+        "SECONDS\tCO2\tCH4\n"
+        "1782985020\t420.0\t1990.0\n"
+        "1782985021\t3000.0\t1991.0\n",
+        encoding="utf-8",
+    )
+    # Default (5000): 3000 kept.
+    assert parse_li7810(f)["co2_ppm"].iloc[1] == 3000.0
+    # Stricter override: 3000 now dropped.
+    strict = parse_li7810(f, max_co2_ppm=1500.0)
+    assert strict["co2_ppm"].isna().iloc[1]
+    assert strict.attrs["n_co2_out_of_range"] == 1
 
 
 def test_diag_red_codes_drop_both_gases(tmp_path: Path) -> None:
@@ -181,7 +203,7 @@ def test_drop_counts_are_reported(tmp_path: Path) -> None:
         "DATAH\tSECONDS\tDIAG\tCO2\tCH4\n"
         "DATA\t1782985020\t0\t420.0\t1990.0\n"  # clean
         "DATA\t1782985021\t256\t421.0\t1991.0\n"  # DIAG red -> both dropped
-        "DATA\t1782985022\t0\t1600.0\t1992.0\n"  # CO2 out of range
+        "DATA\t1782985022\t0\t6000.0\t1992.0\n"  # CO2 out of range (>= 5000)
         "DATA\t1782985023\t0\t422.0\t2896621.2\n",  # CH4 out of range
         encoding="utf-8",
     )

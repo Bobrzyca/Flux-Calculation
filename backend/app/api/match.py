@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.api.errors import api_error
+from app.core.config import settings
 from app.db import storage
 from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading
 from app.db.session import get_session
@@ -99,7 +100,7 @@ def run_match(
     # server fault, so surface it as a clean 422 on the right field rather than
     # letting the exception 500 (which the UI would otherwise hang on).
     try:
-        readings = parse_li7810(conc_path)
+        readings = parse_li7810(conc_path, max_co2_ppm=settings.max_valid_co2_ppm)
     except (ValueError, OSError) as exc:
         raise api_error(
             422,

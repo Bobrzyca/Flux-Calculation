@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     # Origins allowed by CORS — the Vite dev server by default.
     cors_origins: list[str] = ["http://localhost:5173"]
 
+    # --- Flux / parsing thresholds ----------------------------------------
+    # Upper plausibility bound for CO₂ (ppm): readings at or above this are
+    # treated as sensor artefacts and dropped before fitting. Configurable
+    # because high-flux substrates (manure, very active soils) can genuinely
+    # exceed the old 1500 ppm bound over a closure. Override via
+    # MAX_VALID_CO2_PPM in the environment / .env.
+    max_valid_co2_ppm: float = 5000.0
+
     # --- Logging -----------------------------------------------------------
     # Minimum level emitted: DEBUG | INFO | WARNING | ERROR | CRITICAL.
     log_level: str = "INFO"

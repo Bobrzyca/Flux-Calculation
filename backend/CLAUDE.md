@@ -280,8 +280,11 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
   `n_co2_out_of_range`/`n_ch4_out_of_range` = values outside the plausible
   ranges); the match endpoint (`_drop_log_messages`) turns each non-zero count
   into a processing-log line, so drops that used to vanish are now visible. The
-  CO₂ `>= 1500` ppm plausibility bound (mirrors the R method-of-record) is
-  unchanged — it can clip genuine high-flux readings, so the log now surfaces it.
+  CO₂ upper plausibility bound is **configurable** — `settings.max_valid_co2_ppm`
+  (env `MAX_VALID_CO2_PPM`, default **5000** ppm), threaded in as
+  `parse_li7810(max_co2_ppm=…)` by the match + read endpoints. Raised from the R
+  method-of-record's 1500 so genuine high-flux rises (manure, active soils) aren't
+  clipped; lower it per-install for the strict R cut.
 
 The `flux/` package is the scientific core (pure, **never LLM-touched**):
 `regression.py` (`fit_slope` via `scipy.stats.linregress`), `flux.py`
@@ -316,8 +319,10 @@ pressures/temperatures, inlet clogged, not ready). "Yellow" `DIAG` codes
 (1–16: frequency/laser-temperature adjustment, incomplete scan, start-up) mean
 *noisy but valid* and are **kept** — dropping them lost whole spots on real
 campaigns. Noise on kept rows is handled **per gas** by plausibility ranges:
-CO₂ in [`MIN_VALID_CO2_PPM`, `MAX_VALID_CO2_PPM`) = [0, 1500) ppm (upper bound
-matches the R method; negative CO₂ is physically impossible) and CH₄ in
+CO₂ in [`MIN_VALID_CO2_PPM`, `max_co2_ppm`) = [0, **5000**) ppm by default (upper
+bound configurable via `settings.max_valid_co2_ppm`; was 1500 in the R method,
+raised so high-flux rises aren't clipped; negative CO₂ is physically impossible)
+and CH₄ in
 [`MIN_VALID_CH4_PPB`, `MAX_VALID_CH4_PPB`) = [0, 100 000) ppb (ambient ~2 000,
 real chamber rises peak in the tens of thousands; laser mode-hop artefacts
 cluster from ~130k up) — an implausible value nulls only that gas.

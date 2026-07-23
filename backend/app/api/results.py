@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.api.errors import api_error
+from app.core.config import settings
 from app.db import storage
 from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading, Spot
 from app.db.session import get_session
@@ -427,7 +428,10 @@ def _spot_context(
     if conc_path is None:
         return context
     try:
-        raw = apply_offset(parse_li7810(conc_path), analysis.time_offset_seconds)
+        raw = apply_offset(
+            parse_li7810(conc_path, max_co2_ppm=settings.max_valid_co2_ppm),
+            analysis.time_offset_seconds,
+        )
     except ValueError, OSError:
         return context
     lo = t0 - C.SPOT_CONTEXT_EXTRA_SECONDS
@@ -695,7 +699,10 @@ def _timeseries_background(
     if conc_path is None:
         return background
     try:
-        raw = apply_offset(parse_li7810(conc_path), analysis.time_offset_seconds)
+        raw = apply_offset(
+            parse_li7810(conc_path, max_co2_ppm=settings.max_valid_co2_ppm),
+            analysis.time_offset_seconds,
+        )
     except ValueError, OSError:
         return background
     for gas in GAS_COLUMN:
