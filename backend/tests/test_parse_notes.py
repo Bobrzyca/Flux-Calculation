@@ -16,6 +16,19 @@ from app.parsing.notes import (
 SAMPLE = Path(__file__).resolve().parent.parent / "sample_data" / "notes_sample.csv"
 
 
+def test_notes_legacy_xls_clear_error(tmp_path: Path) -> None:
+    # Legacy .xls can't be read by openpyxl; the user gets a clear message,
+    # not a cryptic "not a zip file" from the reader.
+    fake = tmp_path / "notes.xls"
+    fake.write_bytes(b"\xd0\xcf\x11\xe0not really xls")
+    try:
+        parse_notes(fake)
+    except ValueError as exc:
+        assert ".xls" in str(exc)
+    else:
+        raise AssertionError("expected ValueError for legacy .xls")
+
+
 def test_clean_times_normalised_to_hhmmss() -> None:
     rows = parse_notes(SAMPLE)
     by_nr = {r.nr: r for r in rows}

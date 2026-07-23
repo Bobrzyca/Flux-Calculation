@@ -180,6 +180,15 @@ notes/pressure parsers are deterministic and cover well-formed files only; toler
 parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
 
 **Real-export robustness (all times treated as naive local wall-clock):**
+- `tabular.py` (shared) centralises the tolerant reading used by the temperature
+  **and** pressure parsers: `read_table` (xlsx/csv/txt, wrong-extension fallback,
+  encoding + delimiter sniffing, clean `ValueError` on legacy `.xls`),
+  `resolve_temporal_columns` + `to_unix_seconds` (date/time in **one or two**
+  columns, unix-seconds passthrough, day/month/year order inferred from the
+  values), and **`to_float_series`** — numeric coercion that tolerates
+  **European comma decimals** (`13,35` → 13.35) and thousands commas
+  (`1,013.25`), used by temperature, pressure, **and** the LI-7810 gases. A
+  comma-decimal file used to coerce to all-NaN silently; it now parses.
 - `li7810.py` locates the `SECONDS/CO2/CH4` header anywhere in the metadata
   preamble (handles LI-COR `DATAH`/`DATAU`/`DATA` markers, case-insensitive). **The
   matching timeline is built from the local `DATE`+`TIME` columns when present**, not
@@ -237,7 +246,25 @@ parsing of messy notes is the deferred LLM feature (`# TODO ... seminar 6`).
   counts as missing.
   Spot `nr` is renumbered 1..N when the file's numbers are absent/zero or collide
   (e.g. a `4` and a `4.5` light/dark pair). All note/temperature times are read as
-  naive wall-clock so they line up with the LI-7810 DATE/TIME.
+  naive wall-clock so they line up with the LI-7810 DATE/TIME. Legacy `.xls` is
+  rejected with a clear message (openpyxl can't read it; no `xlrd` dependency).
+- `pressure.py` (optional IMGW file) is built on the shared `tabular.py`, so it
+  has the **same tolerance as temperature**: `.csv`/`.txt`/`.xlsx`, cp1250/UTF-16
+  encodings, tab/`;`/`,`/2-space delimiters, **comma decimals**, unix-seconds
+  **or** datetime timestamps in **one or two** columns, and day/month/year order
+  inferred from the values. The pressure column is resolved by exact alias
+  (`pressure`/`hpa`/`cisnienie`/`ciśnienie`/…) then a substring keyword. Values
+  are hPa unless `assume_unit` says otherwise (kPa/Pa/mbar). A truly free-form,
+  header-less IMGW export is still deferred to the LLM (`# TODO seminar 6`). The
+  frontend pressure dropzone now advertises `.csv,.txt,.tsv,.xlsx` (was "any
+  format", which let people drop files the backend then rejected).
+- **Silent-drop logging:** `parse_li7810` records, on `df.attrs`, how many
+  readings it invalidated per reason (`n_diag_invalid` = red-DIAG rows,
+  `n_co2_out_of_range`/`n_ch4_out_of_range` = values outside the plausible
+  ranges); the match endpoint (`_drop_log_messages`) turns each non-zero count
+  into a processing-log line, so drops that used to vanish are now visible. The
+  CO₂ `>= 1500` ppm plausibility bound (mirrors the R method-of-record) is
+  unchanged — it can clip genuine high-flux readings, so the log now surfaces it.
 
 The `flux/` package is the scientific core (pure, **never LLM-touched**):
 `regression.py` (`fit_slope` via `scipy.stats.linregress`), `flux.py`

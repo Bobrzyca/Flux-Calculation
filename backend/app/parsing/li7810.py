@@ -25,6 +25,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.parsing.encoding import detect_encoding
+from app.parsing.tabular import to_float_series
 
 # The columns the downstream pipeline relies on.
 REQUIRED_COLUMNS = frozenset({"SECONDS", "CO2", "CH4"})
@@ -189,32 +190,40 @@ def parse_li7810(path: str | Path) -> pd.DataFrame:
     df = pd.DataFrame(
         {
             "timestamp": _timeline(raw, by_upper),
-            "co2_ppm": pd.to_numeric(raw[co2], errors="coerce").astype(float),
-            "ch4_ppb": pd.to_numeric(raw[ch4], errors="coerce").astype(float),
+            "co2_ppm": to_float_series(raw[co2]),
+            "ch4_ppb": to_float_series(raw[ch4]),
         }
     )
     # Drop both gases only on rows the instrument marks INVALID (a "red" DIAG
     # bit, ≥ 32). "Yellow" codes (1..16) mean noisy-but-valid — keep those and
     # let the per-gas range checks below and the fit step's despike handle the
     # noise. An unparsable DIAG cell keeps the reading.
+    n_diag_invalid = 0
     if "DIAG" in by_upper:
         diag = pd.to_numeric(raw[by_upper["DIAG"]], errors="coerce")
         invalid = (diag.fillna(0).astype(int) & _DIAG_INVALID_MASK) != 0
+        n_diag_invalid = int(invalid.sum())
         df.loc[invalid.to_numpy(), ["co2_ppm", "ch4_ppb"]] = float("nan")
     # Per-gas plausibility: drop values outside each gas's physical range so an
     # artefact in one gas (e.g. mode-hop CH4 in the 100k+ ppb range on a noisy
-    # row) can't distort a fit — without discarding the other, good gas.
-    df.loc[
-        (df["co2_ppm"] >= MAX_VALID_CO2_PPM) | (df["co2_ppm"] < MIN_VALID_CO2_PPM),
-        "co2_ppm",
-    ] = float("nan")
-    df.loc[
-        (df["ch4_ppb"] >= MAX_VALID_CH4_PPB) | (df["ch4_ppb"] < MIN_VALID_CH4_PPB),
-        "ch4_ppb",
-    ] = float("nan")
+    # row) can't distort a fit — without discarding the other, good gas. Count the
+    # drops (values that WERE present and now fall out of range) so the match step
+    # can log them — they used to vanish silently.
+    co2_bad = (df["co2_ppm"] >= MAX_VALID_CO2_PPM) | (df["co2_ppm"] < MIN_VALID_CO2_PPM)
+    ch4_bad = (df["ch4_ppb"] >= MAX_VALID_CH4_PPB) | (df["ch4_ppb"] < MIN_VALID_CH4_PPB)
+    n_co2_out_of_range = int(co2_bad.sum())
+    n_ch4_out_of_range = int(ch4_bad.sum())
+    df.loc[co2_bad, "co2_ppm"] = float("nan")
+    df.loc[ch4_bad, "ch4_ppb"] = float("nan")
     # Drop rows with no usable timestamp (units row / blank trailing lines); keep
     # nan concentrations (warm-up and dropouts) for the matching step to handle.
-    return df.dropna(subset=["timestamp"]).reset_index(drop=True)
+    out = df.dropna(subset=["timestamp"]).reset_index(drop=True)
+    # Record how many readings were silently invalidated, per reason, so the
+    # match endpoint can surface them in the processing log.
+    out.attrs["n_diag_invalid"] = n_diag_invalid
+    out.attrs["n_co2_out_of_range"] = n_co2_out_of_range
+    out.attrs["n_ch4_out_of_range"] = n_ch4_out_of_range
+    return out
 
 
 def _timeline(raw: pd.DataFrame, by_upper: dict[str, str]) -> pd.Series:

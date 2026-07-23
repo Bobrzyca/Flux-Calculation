@@ -239,7 +239,8 @@ export function Upload() {
           />
           <Dropzone
             label="IMGW pressure (optional)"
-            acceptHint="any format — optional"
+            acceptHint=".csv, .txt, .xlsx — optional"
+            accept={FILE_ACCEPT.pressure}
             file={files.pressure}
             onChange={setFile('pressure')}
             error={errors.pressure}

@@ -23,7 +23,10 @@ export const FILE_ACCEPT = {
   concentration: '.txt,.xlsx,.xlsm',
   notes: '.docx,.xlsx,.csv,.txt,.tsv',
   temperature: '.xlsx,.csv,.txt',
-  pressure: '', // format varies — accept anything
+  // Pressure is optional and its format varies; the backend reads csv/txt/xlsx
+  // (any encoding/delimiter). Advertise those rather than "accept anything",
+  // which let people drop files the backend then rejected.
+  pressure: '.csv,.txt,.tsv,.xlsx',
 } as const
 
 /**

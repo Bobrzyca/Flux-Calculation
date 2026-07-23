@@ -28,3 +28,57 @@ def test_unix_timestamps_and_kpa_conversion(tmp_path: Path) -> None:
     assert readings[0].timestamp == 1782985020.0
     # 101.3 kPa -> 1013 hPa.
     assert abs(readings[0].pressure_hpa - 1013.0) < 1e-6
+
+
+def test_parse_pressure_european_imgw_style(tmp_path: Path) -> None:
+    """A real-ish IMGW export: cp1250 encoding, ';' delimiter, comma decimals,
+    Polish header 'Ciśnienie', dotted day-first date. All used to break."""
+    csv = tmp_path / "imgw.csv"
+    csv.write_bytes(
+        "Data;Ciśnienie\n06.10.2025 09:38;1013,2\n06.10.2025 09:39;1013,4\n".encode(
+            "cp1250"
+        )
+    )
+    readings = parse_pressure(csv)
+    assert len(readings) == 2
+    assert all(1000 < r.pressure_hpa < 1020 for r in readings)
+    assert abs(readings[0].pressure_hpa - 1013.2) < 1e-6
+    # 6 October 2025 (day-first), not 10 June.
+    from datetime import UTC, datetime
+
+    assert datetime.fromtimestamp(readings[0].timestamp, tz=UTC).month == 10
+
+
+def test_parse_pressure_separate_date_time_columns(tmp_path: Path) -> None:
+    csv = tmp_path / "press.csv"
+    csv.write_text(
+        "Data;Godzina;Cisnienie\n2025-10-06;09:38:00;1012.5\n"
+        "2025-10-06;09:39:00;1012.6\n",
+        encoding="utf-8",
+    )
+    readings = parse_pressure(csv)
+    assert len(readings) == 2
+    assert abs(readings[0].pressure_hpa - 1012.5) < 1e-6
+    assert readings[0].timestamp < readings[1].timestamp
+
+
+def test_parse_pressure_tab_delimited(tmp_path: Path) -> None:
+    txt = tmp_path / "press.txt"
+    txt.write_text(
+        "timestamp\tpressure\n2025-10-06 09:38:00\t1011.0\n",
+        encoding="utf-8",
+    )
+    readings = parse_pressure(txt)
+    assert len(readings) == 1
+    assert abs(readings[0].pressure_hpa - 1011.0) < 1e-6
+
+
+def test_parse_pressure_rejects_legacy_xls(tmp_path: Path) -> None:
+    fake = tmp_path / "p.xls"
+    fake.write_bytes(b"\xd0\xcf\x11\xe0nope")
+    try:
+        parse_pressure(fake)
+    except ValueError as exc:
+        assert ".xls" in str(exc)
+    else:
+        raise AssertionError("expected ValueError for legacy .xls")

@@ -40,6 +40,21 @@ def test_parse_temperature_reads_csv(tmp_path: Path) -> None:
     assert df["timestamp"].diff().dropna().iloc[0] == 30.0
 
 
+def test_parse_temperature_comma_decimal_values(tmp_path: Path) -> None:
+    # European logger: ';' delimiter and comma decimals ("13,35"). Used to
+    # silently yield all-NaN temperatures (timestamps parsed, so dropna missed it).
+    f = tmp_path / "temp.csv"
+    f.write_text(
+        "Data;Godzina;Temperatura\n"
+        "2025-10-06;09:38:00;13,35\n"
+        "2025-10-06;09:39:00;13,40\n",
+        encoding="utf-8",
+    )
+    df = parse_temperature(f)
+    assert df["temperature_c"].notna().all()
+    assert df["temperature_c"].tolist() == [13.35, 13.40]
+
+
 def test_parse_temperature_real_tab_delimited_format(tmp_path: Path) -> None:
     # The real logger export: TAB-delimited, day-first dotted dates, a
     # `Temp(°C)` column, plus columns we ignore (Status, Type, CO2, RH).

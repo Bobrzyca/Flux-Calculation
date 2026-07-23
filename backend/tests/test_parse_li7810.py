@@ -172,6 +172,25 @@ def test_diag_red_codes_drop_both_gases(tmp_path: Path) -> None:
     assert df["co2_ppm"].iloc[0] == 420.0
 
 
+def test_drop_counts_are_reported(tmp_path: Path) -> None:
+    # The parser silently nan'd DIAG-invalid and out-of-range rows; it now
+    # records how many, per reason, on df.attrs so the match step can log them.
+    f = tmp_path / "drops.txt"
+    f.write_text(
+        "Model:\tLI-7810\n"
+        "DATAH\tSECONDS\tDIAG\tCO2\tCH4\n"
+        "DATA\t1782985020\t0\t420.0\t1990.0\n"  # clean
+        "DATA\t1782985021\t256\t421.0\t1991.0\n"  # DIAG red -> both dropped
+        "DATA\t1782985022\t0\t1600.0\t1992.0\n"  # CO2 out of range
+        "DATA\t1782985023\t0\t422.0\t2896621.2\n",  # CH4 out of range
+        encoding="utf-8",
+    )
+    df = parse_li7810(f)
+    assert df.attrs["n_diag_invalid"] == 1
+    assert df.attrs["n_co2_out_of_range"] == 1
+    assert df.attrs["n_ch4_out_of_range"] == 1
+
+
 def test_diag_yellow_codes_keep_plausible_readings(tmp_path: Path) -> None:
     # DIAG bits 1..16 ("yellow" codes — adjustment underway, start-up) mean
     # "measurements may be noisy" but VALID. Dropping them wiped out whole

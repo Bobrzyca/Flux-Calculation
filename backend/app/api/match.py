@@ -33,6 +33,29 @@ def _num(value: float) -> float | None:
     return None if pd.isna(value) else float(value)
 
 
+def _drop_log_messages(attrs: dict[str, object]) -> list[tuple[str, str]]:
+    """Processing-log lines for readings the parser silently invalidated.
+
+    ``parse_li7810`` nan's rows the instrument flags invalid (red DIAG) and
+    values outside each gas's physical range; those used to vanish without a
+    trace. Report each non-zero count so the researcher can see it happened.
+    """
+    reasons = [
+        ("n_diag_invalid", "instrument-flagged (red DIAG) rows"),
+        ("n_co2_out_of_range", "CO₂ readings out of the plausible range"),
+        ("n_ch4_out_of_range", "CH₄ readings out of the plausible range"),
+    ]
+    messages: list[tuple[str, str]] = []
+    for key, label in reasons:
+        raw = attrs.get(key, 0)
+        count = int(raw) if isinstance(raw, (int, float)) else 0
+        if count:
+            messages.append(
+                ("info", f"Concentration file: dropped {count} {label} (set to nan)")
+            )
+    return messages
+
+
 def _clear_previous(session: Session, analysis: Analysis) -> None:
     """Drop prior Reading/FluxResult/log rows so a re-run recomputes cleanly."""
     for spot in analysis.spots:
@@ -114,6 +137,8 @@ def run_match(
     logs.append(
         ("info", f"Applied time-offset {offset:+g} s to {len(readings)} readings")
     )
+    # Surface readings the parser silently invalidated (red DIAG, out-of-range).
+    logs.extend(_drop_log_messages(readings.attrs))
 
     # The note windows are HH:MM only, so they need a date. The concentration
     # file is authoritative (its DATE column), so derive the work date from it

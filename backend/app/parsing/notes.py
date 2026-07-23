@@ -136,7 +136,13 @@ def _read_table(path: str | Path) -> list[dict[str, str]]:
     suffix = Path(path).suffix.lower()
     if suffix in {".csv", ".txt", ".tsv"}:
         frame = _read_csv_autodetect(path)
-    elif suffix in {".xlsx", ".xls"}:
+    elif suffix == ".xls":
+        # Legacy .xls needs xlrd (not a dependency); openpyxl can't open it, so
+        # fail with a clear message rather than a cryptic "not a zip file".
+        raise ValueError(
+            "Legacy .xls is not supported — save the notes as .xlsx, .csv, or .docx."
+        )
+    elif suffix == ".xlsx":
         frame = pd.read_excel(path, dtype=str, engine="openpyxl").fillna("")
     elif suffix == ".docx":
         return _read_docx_table(path)

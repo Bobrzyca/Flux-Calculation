@@ -2,8 +2,24 @@
 
 from fastapi.testclient import TestClient
 
+from app.api.match import _drop_log_messages
 from app.api.results import _shift_hhmmss
 from tests.conftest import sample_files, sample_form
+
+
+def test_drop_log_messages_reports_each_reason() -> None:
+    msgs = _drop_log_messages(
+        {"n_diag_invalid": 3, "n_co2_out_of_range": 2, "n_ch4_out_of_range": 0}
+    )
+    text = " ".join(m for _, m in msgs)
+    assert "3" in text and "instrument-flagged" in text
+    assert "2" in text and "CO₂" in text
+    # A zero count is not logged (no noise).
+    assert "CH₄" not in text
+
+
+def test_drop_log_messages_silent_when_nothing_dropped() -> None:
+    assert _drop_log_messages({}) == []
 
 
 def test_shift_hhmmss_accepts_hhmm() -> None:
