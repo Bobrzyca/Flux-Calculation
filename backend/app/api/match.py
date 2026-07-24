@@ -21,6 +21,7 @@ from app.db.session import get_session
 from app.flux.constants import DEFAULT_PRESSURE_HPA, FIT_WINDOW_SECONDS
 from app.flux.pipeline import fit_spot
 from app.matching.match import (
+    align_temperature_to_date,
     match_spot,
     non_overlapping_bounds,
     note_time_to_unix,
@@ -167,6 +168,20 @@ def run_match(
             )
             analysis.work_date = data_date  # correct the record for display/export
         work_date = data_date
+
+    # A time-only temperature file parses to today's date, so its timestamps land
+    # on the wrong day and the nearest-temperature match collapses to one value for
+    # every spot. Realign it onto the concentration day (time-of-day preserved).
+    temperature, temp_shift_days = align_temperature_to_date(temperature, work_date)
+    if temp_shift_days:
+        logs.append(
+            (
+                "info",
+                "Temperature file had no date (or a different one); aligned it to "
+                f"{work_date} by shifting {temp_shift_days:+d} day(s) so it matches "
+                "the concentration record.",
+            )
+        )
 
     spots = sorted(analysis.spots, key=lambda s: s.nr)
     spots_computed = 0

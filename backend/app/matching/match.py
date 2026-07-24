@@ -163,6 +163,34 @@ def non_overlapping_bounds(
     return list(zip(los, his, strict=True))
 
 
+def align_temperature_to_date(
+    temperature: pd.DataFrame, target_date: date
+) -> tuple[pd.DataFrame, int]:
+    """Shift a temperature series onto ``target_date`` when it parsed to another day.
+
+    A **time-only** temperature file (columns like ``Time; TEMPERATURA`` with no
+    date) falls back to *today's* date when parsed, so its absolute timestamps
+    land on the wrong calendar day; the nearest-in-time match then collapses to a
+    single boundary temperature for every reading. This shifts every timestamp by
+    whole days so the series' calendar date matches ``target_date`` (the
+    concentration day), **preserving the time-of-day** (naive UTC wall-clock, so a
+    whole-day shift never disturbs the clock). A series already on ``target_date``
+    (a real same-day logger export) is returned unchanged.
+
+    Returns ``(frame, shift_days)`` — ``shift_days`` is 0 when nothing moved.
+    """
+    if temperature.empty:
+        return temperature, 0
+    ts = temperature["timestamp"].astype(float)
+    first_date = datetime.fromtimestamp(float(ts.min()), tz=UTC).date()
+    if first_date == target_date:
+        return temperature, 0
+    shift_days = (target_date - first_date).days
+    out = temperature.copy()
+    out["timestamp"] = ts + shift_days * 86_400.0
+    return out, shift_days
+
+
 def nearest_temperature(temperature: pd.DataFrame, t: float) -> float | None:
     """Temperature (°C) nearest in time to ``t``; None if the series is empty."""
     if temperature.empty:

@@ -373,6 +373,13 @@ which clamp the slice so **two spots are never computed on the same readings**
 (the bounds only ever narrow a window, so far-apart spots are unaffected). **Note:**
 analyses matched before the lead margin existed store no pre-start data — re-run the
 match to shift a spot earlier.
+**Temperature date alignment:** a **time-only** temperature file (e.g.
+`Time; TEMPERATURA`, no date) parses to *today's* date, so its timestamps land on
+the wrong day and the nearest-temperature match collapses to one value for every
+spot. The match endpoint calls `align_temperature_to_date(temperature, work_date)`
+to shift the series by whole days onto the concentration day (time-of-day
+preserved), logging the shift; a real same-day logger export is untouched. So a
+per-spot temperature list (one reading per measurement time) now matches correctly.
 
 Persistence lives in `app/db/`: `models.py` (SQLModel tables), `session.py` (the
 engine, `get_session` dependency, and `create_db_and_tables`, called from the

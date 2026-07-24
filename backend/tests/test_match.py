@@ -7,6 +7,7 @@ import pandas as pd
 
 from app.matching.match import (
     NO_PRESSURE,
+    align_temperature_to_date,
     match_spot,
     nearest_pressure,
     nearest_temperature,
@@ -163,6 +164,54 @@ def test_shared_gps_spots_stay_distinct() -> None:
     dark = match_spot(8, stream, "09:05:00", "09:07:00", WORK_DATE, 0, temp, press)
     assert light.nr != dark.nr
     assert light.readings["timestamp"].min() != dark.readings["timestamp"].min()
+
+
+def test_align_temperature_to_date_shifts_time_only_file() -> None:
+    # A time-only temperature file parses to today's date; matching needs it on the
+    # concentration day. The shift preserves the time-of-day exactly.
+    today = date(2026, 7, 24)
+    t_of_day = 12 * 3600 + 18 * 60  # 12:18
+    today_unix = note_time_to_unix(today, "12:18:00")
+    temp = pd.DataFrame(
+        {"timestamp": [today_unix, today_unix + 300], "temperature_c": [18.5, 18.2]}
+    )
+    aligned, shift = align_temperature_to_date(temp, WORK_DATE)  # WORK_DATE=2026-07-02
+    assert shift == (WORK_DATE - today).days == -22
+    # Now on the concentration day, same clock time (12:18 on 2 July).
+    assert aligned["timestamp"].iloc[0] == note_time_to_unix(WORK_DATE, "12:18:00")
+    assert (aligned["timestamp"].iloc[0] - BASE) == t_of_day - 9 * 3600
+    # A series already on the target day is untouched.
+    same = pd.DataFrame({"timestamp": [BASE + 60], "temperature_c": [19.0]})
+    unchanged, shift0 = align_temperature_to_date(same, WORK_DATE)
+    assert shift0 == 0
+    assert unchanged["timestamp"].iloc[0] == BASE + 60
+
+
+def test_align_temperature_makes_per_spot_temps_vary() -> None:
+    # The real bug: a time-only temp file (wrong date) made every spot get the same
+    # boundary temperature. After aligning, spots at different times differ.
+    stream, press = _stream(), _pressure()
+    # Time-only temperatures parsed to "today"; times-of-day cover the spots.
+    today = date(2026, 7, 24)
+    temp_wrong = pd.DataFrame(
+        {
+            "timestamp": [
+                note_time_to_unix(today, "09:01:00"),
+                note_time_to_unix(today, "09:05:00"),
+            ],
+            "temperature_c": [15.0, 25.0],
+        }
+    )
+    # Without alignment both spots collapse to the nearest single boundary value.
+    a = match_spot(1, stream, "09:01:00", "09:02:00", WORK_DATE, 0, temp_wrong, press)
+    b = match_spot(2, stream, "09:05:00", "09:06:00", WORK_DATE, 0, temp_wrong, press)
+    assert a.temperature_used == b.temperature_used  # both the same boundary value
+
+    aligned, shift = align_temperature_to_date(temp_wrong, WORK_DATE)
+    assert shift != 0
+    a2 = match_spot(1, stream, "09:01:00", "09:02:00", WORK_DATE, 0, aligned, press)
+    b2 = match_spot(2, stream, "09:05:00", "09:06:00", WORK_DATE, 0, aligned, press)
+    assert a2.temperature_used != b2.temperature_used  # now time-matched, they differ
 
 
 def test_overlap_cut_splits_the_gap() -> None:
