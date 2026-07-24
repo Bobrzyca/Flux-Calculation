@@ -18,11 +18,16 @@ describe('formatFlux', () => {
   it('uses exponent for very small magnitudes', () => {
     expect(formatFlux(0.00004)).toBe('4.00e-5')
   })
-  it('uses fixed decimals for sub-1 values', () => {
-    expect(formatFlux(0.812)).toBe('0.8120')
+  it('shows at most four decimals for sub-1 values', () => {
+    expect(formatFlux(0.812)).toBe('0.812')
+    expect(formatFlux(0.0034521)).toBe('0.0035')
   })
-  it('formats mid-range with three decimals', () => {
-    expect(formatFlux(1.83456)).toBe('1.835')
+  it('caps mid-range values at four decimals', () => {
+    expect(formatFlux(1.83456)).toBe('1.8346')
+    expect(formatFlux(123.45678)).toBe('123.4568')
+  })
+  it('keeps large values readable with a thousands separator', () => {
+    expect(formatFlux(12345.678)).toBe('12,345.678')
   })
 })
 

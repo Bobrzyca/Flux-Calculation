@@ -42,7 +42,10 @@ stutter; all traces already render via `scattergl` (WebGL).
 **Per-spot shift context:** `GasDetail.context` (optional) is a wider slice of the
 raw record around the spot; `RegressionPlot` draws it as a faint "Surrounding
 record" trace behind the spot's own points, so the manual-shift control shows far
-more than the fit window and it's easy to see where to move it.
+more than the fit window and it's easy to see where to move it. `RegressionPlot`
+plots the **real clock time** on the x-axis (`GasPoint.t_unix`, a Plotly `date`
+axis with `%H:%M:%S` ticks — same convention as `TimeSeriesPlot`), not
+seconds-in-chamber, so a window can be lined up against the field notes.
 
 **Manual per-spot shift + crop:** `SpotDetail` has a "Manual fit window" control
 (−30/−5/+5/+30 s nudges + a seconds input + Apply / Reset to auto) that calls
@@ -52,7 +55,10 @@ be negative** (shift the window *earlier*, into the lead margin of data the matc
 keeps before the recorded start). A **"Crop the end too"** toggle reveals a second
 (end) offset so the window can be trimmed at **both ends** for spots disturbed at
 both ends; unticked, the window keeps its full length so a shift never cuts the
-measurement (Apply is disabled if the end isn't after the start). The saved window
+measurement (Apply is disabled if the end isn't after the start). The end-crop row
+has its **own Apply button** (accessible name "Apply the cropped fit window") so
+the crop can be committed without scrolling back to the start row's Apply; both
+call the same handler. The saved window
 overrides the page fit mode for that spot (`SpotDetail.mode === 'manual'`,
 `manual_offset_s`/`manual_end_offset_s`, `fit_end_s`), and the drawer calls
 `onFitChanged` so Results refetches the table + graph (a `fitVersion` counter in

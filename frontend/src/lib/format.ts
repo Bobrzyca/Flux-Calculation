@@ -1,13 +1,12 @@
 /** Display formatters. Kept pure and framework-free for easy unit testing. */
 
-/** Flux values: compact but precise. Uses exponent for very small magnitudes. */
+/** Flux values: at most 4 decimal places. Very small magnitudes keep a compact
+ * exponent so a real but tiny flux doesn't collapse to 0.0000. */
 export function formatFlux(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '—'
   const abs = Math.abs(value)
   if (abs !== 0 && abs < 0.001) return value.toExponential(2)
-  if (abs < 1) return value.toFixed(4)
-  if (abs < 1000) return value.toFixed(3)
-  return value.toLocaleString('en-US', { maximumFractionDigits: 1 })
+  return value.toLocaleString('en-US', { maximumFractionDigits: 4 })
 }
 
 /** R²: three decimals, or an em dash when absent. */

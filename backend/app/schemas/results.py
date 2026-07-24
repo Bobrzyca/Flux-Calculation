@@ -79,7 +79,8 @@ class ResultsPayload(BaseModel):
 
 
 class GasPoint(BaseModel):
-    t_s: float
+    t_s: float  # seconds relative to the spot's first reading
+    t_unix: float  # absolute time (naive local wall-clock as unix seconds)
     value: float
     in_window: bool
 
@@ -87,7 +88,8 @@ class GasPoint(BaseModel):
 class ContextPoint(BaseModel):
     """A raw record point shown as faint context around a spot (display-only)."""
 
-    t_s: float
+    t_s: float  # seconds relative to the spot's first reading
+    t_unix: float  # absolute time (naive local wall-clock as unix seconds)
     value: float
 
 

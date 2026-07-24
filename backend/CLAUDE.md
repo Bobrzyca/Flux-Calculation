@@ -114,7 +114,8 @@ suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile
   `quality_check.available` is **false** with a pending message —
   n8n is deferred (`# TODO: n8n quality check`).
 - `GET /api/analyses/{id}/spots/{nr}?fit_mode=auto|full` → `SpotDetail` (per-gas
-  points with `in_window`, fit incl. `n_dropped_nan` + `n_spikes`, `fit_window`,
+  points with `t_s`, absolute `t_unix` (so the detail plot can use a real clock
+  axis like the overview) + `in_window`, fit incl. `n_dropped_nan` + `n_spikes`, `fit_window`,
   flux ladder, **plus `context`** — a faint wider raw record `SPOT_CONTEXT_EXTRA_SECONDS`
   before/after the stored window, re-parsed from the LI file, display-only, so the
   manual-shift control has visible surroundings) plus the fit meta `mode`,
@@ -160,8 +161,11 @@ suite + ruff + mypy (`.github/workflows/test.yml`); checkov scans the Dockerfile
 - `GET /api/analyses/{id}/export?format=xlsx|txt|csv` (default `xlsx`, 422 on
   unknown, 404 on unknown analysis) — streams a download with the identity columns
   + conditions + **full unit ladder per gas**, built from `FluxResult` by the
-  reusable `app/export/tabular.py:build_table`. `Content-Disposition` uses the
-  analysis name.
+  reusable `app/export/tabular.py:build_table`. Flux + R² values are rounded to
+  **≤4 decimal places** by `round_flux` (tiny magnitudes keep 4 significant
+  figures so a real small flux doesn't collapse to 0.0000); the stored `FluxResult`
+  and the API responses keep full precision — only the download is rounded.
+  `Content-Disposition` uses the analysis name.
 
 **Pipeline overview** (the end-to-end flow the endpoints assemble):
 ```
@@ -322,10 +326,12 @@ campaigns. Noise on kept rows is handled **per gas** by plausibility ranges:
 CO₂ in [`MIN_VALID_CO2_PPM`, `max_co2_ppm`) = [0, **5000**) ppm by default (upper
 bound configurable via `settings.max_valid_co2_ppm`; was 1500 in the R method,
 raised so high-flux rises aren't clipped; negative CO₂ is physically impossible)
-and CH₄ in
-[`MIN_VALID_CH4_PPB`, `MAX_VALID_CH4_PPB`) = [0, 100 000) ppb (ambient ~2 000,
-real chamber rises peak in the tens of thousands; laser mode-hop artefacts
-cluster from ~130k up) — an implausible value nulls only that gas.
+and CH₄ has **no upper bound by default** — only negative CH₄ (physically
+impossible) is dropped, so genuine off-scale rises are kept (clipping them used
+to null enough points that the CH₄ flux showed as "—"). The optional upper cap is
+`settings.max_valid_ch4_ppb` (env `MAX_VALID_CH4_PPB`, threaded as
+`parse_li7810(max_ch4_ppb=…)`), **None** by default; set it (e.g. 100000) to
+re-enable the old laser mode-hop guard. An implausible value nulls only that gas.
 **Whole-recording mode:** `fit_spot(..., mode="full")` skips the window search and
 fits the entire recorded span as-is (despiking still applies) — surfaced via the
 `fit_mode=full` query param on the **results, timeseries, and spot-detail**
@@ -358,7 +364,13 @@ structured `LogMessage`s). **`match_spot` slices a window with a
 `_SLICE_SECONDS = FIT_WINDOW + FIT_SEARCH_MAX_OFFSET`), so the stored `Reading`
 rows include data on both sides of the recorded start — the raw material the fit
 step's backward search and the user's backward manual shift need. Spots are matched
-independently, so a shared GPS (light/dark pair or redo) stays distinct. **Note:**
+independently, so a shared GPS (light/dark pair or redo) stays distinct.
+**No overlapping windows:** the match endpoint computes a single cut between each
+adjacent pair of spots (ordered by recorded start) via
+`non_overlapping_bounds`/`overlap_cut` — the midpoint of the earlier spot's stop
+and the later spot's start — and passes it to `match_spot` as `lo_bound`/`hi_bound`,
+which clamp the slice so **two spots are never computed on the same readings**
+(the bounds only ever narrow a window, so far-apart spots are unaffected). **Note:**
 analyses matched before the lead margin existed store no pre-start data — re-run the
 match to shift a spot earlier.
 

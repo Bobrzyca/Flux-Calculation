@@ -98,6 +98,8 @@ def slice_from_start(
     offset_seconds: float,
     seconds: float,
     lead_seconds: float = 0.0,
+    lo_bound: float | None = None,
+    hi_bound: float | None = None,
 ) -> pd.DataFrame:
     """Offset-correct ``readings`` and return a window around ``start``.
 
@@ -105,13 +107,60 @@ def slice_from_start(
     ``[start - lead_seconds, start + seconds)``. The ``lead_seconds`` of data
     *before* the recorded start let the fit step search — and the user shift —
     the window to an earlier slope than the hand-recorded start.
+
+    ``lo_bound``/``hi_bound`` are optional absolute (unix) limits that further
+    clamp the window so it cannot extend into an adjacent spot's window — the
+    guard against two spots being computed on the same readings. They only ever
+    *narrow* the ``[start - lead, start + seconds)`` span, so far-apart spots are
+    unaffected.
     """
     shifted = apply_offset(readings, offset_seconds)
     start_unix = note_time_to_unix(work_date, start)
-    mask = (shifted["timestamp"] >= start_unix - lead_seconds) & (
-        shifted["timestamp"] < start_unix + seconds
-    )
+    lo = start_unix - lead_seconds
+    hi = start_unix + seconds
+    if lo_bound is not None:
+        lo = max(lo, lo_bound)
+    if hi_bound is not None:
+        hi = min(hi, hi_bound)
+    mask = (shifted["timestamp"] >= lo) & (shifted["timestamp"] < hi)
     return shifted[mask].reset_index(drop=True)
+
+
+def overlap_cut(prev_start: float, prev_stop: float | None, next_start: float) -> float:
+    """Boundary time between two consecutive spots so their windows don't overlap.
+
+    Placed at the midpoint of the earlier spot's recorded *stop* and the later
+    spot's recorded *start*, so each spot keeps its own measurement region and the
+    gap between them is split evenly. Falls back to the midpoint of the two starts
+    when the stop is missing or itself overlaps the next start. Always clamped to
+    lie within ``[prev_start, next_start]``.
+    """
+    if prev_stop is not None and prev_start < prev_stop <= next_start:
+        cut = (prev_stop + next_start) / 2.0
+    else:
+        cut = (prev_start + next_start) / 2.0
+    return min(max(cut, prev_start), next_start)
+
+
+def non_overlapping_bounds(
+    spans: list[tuple[float, float | None]],
+) -> list[tuple[float | None, float | None]]:
+    """Per-spot ``(lo, hi)`` unix limits that keep consecutive windows apart.
+
+    ``spans`` is ``(start_unix, stop_unix | None)`` **sorted ascending by
+    start_unix**. Between each adjacent pair a single shared cut (see
+    ``overlap_cut``) becomes the earlier spot's upper limit and the later spot's
+    lower limit, so their sliced readings can never coincide. The first spot has
+    no lower limit and the last no upper limit (both ``None``).
+    """
+    n = len(spans)
+    los: list[float | None] = [None] * n
+    his: list[float | None] = [None] * n
+    for i in range(n - 1):
+        cut = overlap_cut(spans[i][0], spans[i][1], spans[i + 1][0])
+        his[i] = cut
+        los[i + 1] = cut
+    return list(zip(los, his, strict=True))
 
 
 def nearest_temperature(temperature: pd.DataFrame, t: float) -> float | None:
@@ -138,8 +187,15 @@ def match_spot(
     offset_seconds: float,
     temperature: pd.DataFrame,
     pressure: list[PressureReading],
+    lo_bound: float | None = None,
+    hi_bound: float | None = None,
 ) -> SpotMatch:
-    """Match one spot: validate its window, slice readings, attach temp/pressure."""
+    """Match one spot: validate its window, slice readings, attach temp/pressure.
+
+    ``lo_bound``/``hi_bound`` are optional unix limits (from
+    ``non_overlapping_bounds``) that stop this spot's window from reaching into a
+    neighbouring spot's window, so no two spots are computed on the same readings.
+    """
     empty = readings.iloc[0:0].copy()
 
     try:
@@ -184,6 +240,8 @@ def match_spot(
         offset_seconds,
         _SLICE_SECONDS,
         lead_seconds=C.FIT_SEARCH_BACK_SECONDS,
+        lo_bound=lo_bound,
+        hi_bound=hi_bound,
     )
     if window.empty:
         return SpotMatch(

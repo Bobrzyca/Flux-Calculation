@@ -204,12 +204,13 @@ def test_drop_counts_are_reported(tmp_path: Path) -> None:
         "DATA\t1782985020\t0\t420.0\t1990.0\n"  # clean
         "DATA\t1782985021\t256\t421.0\t1991.0\n"  # DIAG red -> both dropped
         "DATA\t1782985022\t0\t6000.0\t1992.0\n"  # CO2 out of range (>= 5000)
-        "DATA\t1782985023\t0\t422.0\t2896621.2\n",  # CH4 out of range
+        "DATA\t1782985023\t0\t422.0\t-5.0\n",  # CH4 out of range (negative)
         encoding="utf-8",
     )
     df = parse_li7810(f)
     assert df.attrs["n_diag_invalid"] == 1
     assert df.attrs["n_co2_out_of_range"] == 1
+    # Only negative CH₄ is dropped by default (no upper cap); the count reflects it.
     assert df.attrs["n_ch4_out_of_range"] == 1
 
 
@@ -231,16 +232,18 @@ def test_diag_yellow_codes_keep_plausible_readings(tmp_path: Path) -> None:
     df = parse_li7810(f)
     # Plausible values on yellow rows survive.
     assert df["co2_ppm"].iloc[1] == 430.0 and df["ch4_ppb"].iloc[1] == 1995.0
-    # Implausible values are dropped per gas, not per row: laser mode-hop CH4
-    # garbage loses only CH4; a negative CO2 loses only CO2.
-    assert df["co2_ppm"].iloc[2] == 425.0 and df["ch4_ppb"].isna().iloc[2]
+    # By default there is no upper CH₄ cap, so an off-scale (high) CH₄ value on a
+    # yellow row is KEPT — the point of the change (it used to be dropped, taking
+    # the CH₄ flux with it). CO₂ on the same row is unaffected.
+    assert df["co2_ppm"].iloc[2] == 425.0 and df["ch4_ppb"].iloc[2] == 461932.8
+    # Drops are still per gas, not per row: a negative CO₂ loses only CO₂.
     assert df["co2_ppm"].isna().iloc[3] and df["ch4_ppb"].iloc[3] == 1992.0
 
 
-def test_garbage_ch4_dropped_regardless_of_diag(tmp_path: Path) -> None:
-    # CH4 outside the plausible range (mode-hop artefacts in the 100k+ ppb
-    # range, or negative) is dropped (nan) even on unflagged rows; CO2 on the
-    # same row is untouched.
+def test_ch4_upper_bound_off_by_default_but_configurable(tmp_path: Path) -> None:
+    # There is NO upper CH₄ cap by default: high off-scale values are kept (they
+    # are real chamber rises the researcher must not lose) and only negative CH₄
+    # is dropped. The cap can be re-enabled per install via max_ch4_ppb.
     f = tmp_path / "ch4.txt"
     f.write_text(
         "Model:\tLI-7810\n"
@@ -251,11 +254,19 @@ def test_garbage_ch4_dropped_regardless_of_diag(tmp_path: Path) -> None:
         "1782985023\t423.0\t42895.7\n",
         encoding="utf-8",
     )
+    # Default: high values kept, only the negative dropped.
     df = parse_li7810(f)
-    assert df["ch4_ppb"].isna().iloc[1]  # mode-hop garbage -> nan
-    assert df["ch4_ppb"].isna().iloc[2]  # negative -> nan
+    assert df["ch4_ppb"].iloc[1] == 578073.0  # off-scale value KEPT (was dropped)
+    assert df["ch4_ppb"].isna().iloc[2]  # negative -> nan (still impossible)
     assert df["ch4_ppb"].iloc[3] == 42895.7  # a real high chamber rise survives
     assert df["co2_ppm"].notna().all()
+    assert df.attrs["n_ch4_out_of_range"] == 1  # only the negative
+
+    # Opt-in cap: setting an upper bound drops the mode-hop value again.
+    capped = parse_li7810(f, max_ch4_ppb=100_000.0)
+    assert capped["ch4_ppb"].isna().iloc[1]  # 578073 now dropped
+    assert capped["ch4_ppb"].iloc[3] == 42895.7  # 42895 still under the cap
+    assert capped.attrs["n_ch4_out_of_range"] == 2  # negative + over-cap
 
 
 def test_parse_daymonthyear_date_format(tmp_path: Path) -> None:

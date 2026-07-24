@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     # MAX_VALID_CO2_PPM in the environment / .env.
     max_valid_co2_ppm: float = 5000.0
 
+    # Optional upper plausibility bound for CH₄ (ppb). ``None`` (the default)
+    # means **no upper cap** — genuine off-scale chamber rises are kept and only
+    # negative CH₄ is dropped, so nothing real is silently discarded (an over-eager
+    # cap used to null enough CH₄ points that the flux showed as "—"). Set
+    # MAX_VALID_CH4_PPB in the environment / .env to re-enable the old mode-hop
+    # guard (e.g. 100000) for a campaign that needs it.
+    max_valid_ch4_ppb: float | None = None
+
     # --- Logging -----------------------------------------------------------
     # Minimum level emitted: DEBUG | INFO | WARNING | ERROR | CRITICAL.
     log_level: str = "INFO"

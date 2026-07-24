@@ -5,6 +5,7 @@ match step) so the export carries the **full unit ladder** for each gas — the
 point of the download versus the on-screen table.
 """
 
+from math import floor, isfinite, log10
 from typing import Any
 
 from app.db.models import Analysis, Reading
@@ -48,6 +49,22 @@ def _headers() -> list[str]:
     return headers
 
 
+def round_flux(value: float | None) -> float | None:
+    """Round a flux (or R²) value for export to at most 4 decimal places.
+
+    Very small magnitudes (``|v| < 1e-3``) keep 4 *significant* figures instead,
+    so a real but tiny flux (e.g. ``3.001e-5``) survives rather than collapsing to
+    ``0.0000``. ``None``/non-finite pass through as ``None``. The stored value and
+    the API response keep full precision — only the download is rounded.
+    """
+    if value is None or not isfinite(value):
+        return None
+    a = abs(value)
+    if a != 0.0 and a < 1e-3:
+        return round(value, 3 - floor(log10(a)))  # 4 significant figures
+    return round(value, 4)
+
+
 def _skip_reason(spot_start: str, spot_stop: str, has_readings: bool) -> str | None:
     if has_readings:
         return None
@@ -89,9 +106,9 @@ def build_table(analysis: Analysis) -> tuple[list[str], list[list[Any]]]:
             if fr is None:
                 row.extend(["", ""] + ["" for _ in _LADDER])
             else:
-                row.append(fr.r2)
+                row.append(round_flux(fr.r2))
                 row.append(fr.n_points)
-                row.extend(getattr(fr, f"flux_{unit}") for unit in _LADDER)
+                row.extend(round_flux(getattr(fr, f"flux_{unit}")) for unit in _LADDER)
         row.append(bool(not readings))
         row.append(_skip_reason(spot.start_time, spot.stop_time, bool(readings)))
         rows.append(row)

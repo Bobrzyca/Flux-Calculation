@@ -67,6 +67,44 @@ def test_export_defaults_to_xlsx(client: TestClient) -> None:
     assert "openxmlformats" in resp.headers["content-type"]
 
 
+def test_export_rounds_flux_to_four_decimals(client: TestClient) -> None:
+    # Exported flux/R² values carry at most 4 decimal places (small magnitudes
+    # keep 4 significant figures) rather than full float64 tails.
+    analysis_id = _create_and_match(client)
+    resp = client.get(f"/api/analyses/{analysis_id}/export?format=csv")
+    rows = list(csv.reader(io.StringIO(resp.text)))
+    header = rows[0]
+    ladder_cols = [
+        i
+        for i, h in enumerate(header)
+        if h.startswith(("CO2_", "CH4_")) or h.startswith("R2_")
+    ]
+    assert ladder_cols
+    seen_value = False
+    for row in rows[1:]:
+        for i in ladder_cols:
+            cell = row[i]
+            if not cell:
+                continue
+            seen_value = True
+            v = float(cell)
+            if v != 0.0 and abs(v) < 1e-3:
+                continue  # tiny values use significant figures, not fixed dp
+            _, _, frac = cell.partition(".")
+            assert len(frac) <= 4, f"{header[i]}={cell} has >4 decimals"
+    assert seen_value  # the sample campaign produced at least one numeric flux
+
+
+def test_round_flux_helper() -> None:
+    from app.export.tabular import round_flux
+
+    assert round_flux(None) is None
+    assert round_flux(float("nan")) is None
+    assert round_flux(123.456789) == 123.4568
+    assert round_flux(0.00003001) == 3.001e-5  # 4 sig figs, not 0.0
+    assert round_flux(0.0) == 0.0
+
+
 def test_export_unknown_format_422(client: TestClient) -> None:
     analysis_id = _create_and_match(client)
     resp = client.get(f"/api/analyses/{analysis_id}/export?format=pdf")

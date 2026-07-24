@@ -43,10 +43,12 @@ MIN_VALID_CO2_PPM = 0.0
 
 # CH₄ plausibility range (ppb). Ambient is ~1900–2000; a real chamber rise on a
 # wetland campaign peaks in the tens of thousands (2026-07-02 Kampinos max:
-# ~43k). Laser mode-hop artefacts cluster from ~130k into the millions, so the
-# bound sits an order of magnitude above real rises and well below the garbage.
-# Negative CH₄ is physically impossible.
-MAX_VALID_CH4_PPB = 100_000.0
+# ~43k). Laser mode-hop artefacts cluster from ~130k into the millions.
+# There is **no upper bound by default** (``max_ch4_ppb=None``): genuine
+# off-scale rises must be kept — clipping them wrongly dropped whole spots (their
+# CH₄ flux showed as "—"). An upper cap can be re-enabled per install via
+# ``settings.max_valid_ch4_ppb`` if a campaign needs the old mode-hop guard.
+# Only negative CH₄ (physically impossible) is always dropped.
 MIN_VALID_CH4_PPB = 0.0
 
 # LI-COR status codes (manual Table 2-2) are additive bit flags. Bits 1|2|4|8|16
@@ -171,7 +173,10 @@ def looks_like_li7810(path: str | Path) -> bool:
 
 
 def parse_li7810(
-    path: str | Path, *, max_co2_ppm: float = MAX_VALID_CO2_PPM
+    path: str | Path,
+    *,
+    max_co2_ppm: float = MAX_VALID_CO2_PPM,
+    max_ch4_ppb: float | None = None,
 ) -> pd.DataFrame:
     """Parse a LI-7810 log into columns ``timestamp``, ``co2_ppm``, ``ch4_ppb``.
 
@@ -181,7 +186,9 @@ def parse_li7810(
     units row after the header, blank lines) are dropped; column matching is
     case-insensitive. ``max_co2_ppm`` is the upper CO₂ plausibility bound (the
     configurable ``settings.max_valid_co2_ppm``); readings at or above it are
-    dropped as sensor artefacts.
+    dropped as sensor artefacts. ``max_ch4_ppb`` is the optional upper CH₄ bound
+    (``settings.max_valid_ch4_ppb``); it is ``None`` by default, so high off-scale
+    CH₄ is **kept** — only negative CH₄ is dropped. Set it to re-enable the cap.
     """
     raw = _read_raw(path)
     if raw is None:
@@ -211,12 +218,16 @@ def parse_li7810(
         n_diag_invalid = int(invalid.sum())
         df.loc[invalid.to_numpy(), ["co2_ppm", "ch4_ppb"]] = float("nan")
     # Per-gas plausibility: drop values outside each gas's physical range so an
-    # artefact in one gas (e.g. mode-hop CH4 in the 100k+ ppb range on a noisy
-    # row) can't distort a fit — without discarding the other, good gas. Count the
-    # drops (values that WERE present and now fall out of range) so the match step
-    # can log them — they used to vanish silently.
+    # artefact in one gas can't distort a fit — without discarding the other,
+    # good gas. Count the drops (values that WERE present and now fall out of
+    # range) so the match step can log them — they used to vanish silently.
+    # CH₄ has no upper bound unless ``max_ch4_ppb`` is set: genuine off-scale
+    # rises are kept (only negative CH₄ is impossible), so nothing real is
+    # silently dropped. CO₂ keeps its configurable upper bound.
     co2_bad = (df["co2_ppm"] >= max_co2_ppm) | (df["co2_ppm"] < MIN_VALID_CO2_PPM)
-    ch4_bad = (df["ch4_ppb"] >= MAX_VALID_CH4_PPB) | (df["ch4_ppb"] < MIN_VALID_CH4_PPB)
+    ch4_bad = df["ch4_ppb"] < MIN_VALID_CH4_PPB
+    if max_ch4_ppb is not None:
+        ch4_bad = ch4_bad | (df["ch4_ppb"] >= max_ch4_ppb)
     n_co2_out_of_range = int(co2_bad.sum())
     n_ch4_out_of_range = int(ch4_bad.sum())
     df.loc[co2_bad, "co2_ppm"] = float("nan")

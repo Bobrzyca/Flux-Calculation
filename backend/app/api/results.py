@@ -354,6 +354,7 @@ def _gas_detail(
         points.append(
             GasPoint(
                 t_s=rel,
+                t_unix=reading.timestamp,
                 value=value,
                 in_window=result.window_lo_s <= rel < result.window_hi_s,
             )
@@ -429,7 +430,11 @@ def _spot_context(
         return context
     try:
         raw = apply_offset(
-            parse_li7810(conc_path, max_co2_ppm=settings.max_valid_co2_ppm),
+            parse_li7810(
+                conc_path,
+                max_co2_ppm=settings.max_valid_co2_ppm,
+                max_ch4_ppb=settings.max_valid_ch4_ppb,
+            ),
             analysis.time_offset_seconds,
         )
     except ValueError, OSError:
@@ -440,7 +445,11 @@ def _spot_context(
     for gas in GAS_COLUMN:
         attr = _GAS_META[gas][0]
         context[gas] = [
-            ContextPoint(t_s=float(row.timestamp) - t0, value=float(value))
+            ContextPoint(
+                t_s=float(row.timestamp) - t0,
+                t_unix=float(row.timestamp),
+                value=float(value),
+            )
             for row in window.itertuples(index=False)
             if not pd.isna(value := getattr(row, attr))
         ]
@@ -700,7 +709,11 @@ def _timeseries_background(
         return background
     try:
         raw = apply_offset(
-            parse_li7810(conc_path, max_co2_ppm=settings.max_valid_co2_ppm),
+            parse_li7810(
+                conc_path,
+                max_co2_ppm=settings.max_valid_co2_ppm,
+                max_ch4_ppb=settings.max_valid_ch4_ppb,
+            ),
             analysis.time_offset_seconds,
         )
     except ValueError, OSError:

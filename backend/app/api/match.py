@@ -20,7 +20,11 @@ from app.db.models import Analysis, FluxResult, ProcessingLogEntry, Reading
 from app.db.session import get_session
 from app.flux.constants import DEFAULT_PRESSURE_HPA, FIT_WINDOW_SECONDS
 from app.flux.pipeline import fit_spot
-from app.matching.match import match_spot
+from app.matching.match import (
+    match_spot,
+    non_overlapping_bounds,
+    note_time_to_unix,
+)
 from app.parsing.li7810 import parse_li7810
 from app.parsing.pressure import parse_pressure
 from app.parsing.temperature import parse_temperature
@@ -100,7 +104,11 @@ def run_match(
     # server fault, so surface it as a clean 422 on the right field rather than
     # letting the exception 500 (which the UI would otherwise hang on).
     try:
-        readings = parse_li7810(conc_path, max_co2_ppm=settings.max_valid_co2_ppm)
+        readings = parse_li7810(
+            conc_path,
+            max_co2_ppm=settings.max_valid_co2_ppm,
+            max_ch4_ppb=settings.max_valid_ch4_ppb,
+        )
     except (ValueError, OSError) as exc:
         raise api_error(
             422,
@@ -164,7 +172,29 @@ def run_match(
     spots_computed = 0
     flux_count = 0
 
+    # Per-spot window bounds so two spots are never computed on the same readings.
+    # Order the spots with a parseable recorded start by that start, place one cut
+    # between each adjacent pair, and clamp each spot's sliced window to its cuts.
+    # Spots with an unparseable start are left unbounded (they skip below anyway).
+    starts: dict[str, float] = {}
+    stops: dict[str, float | None] = {}
     for spot in spots:
+        try:
+            if spot.start_time:
+                starts[spot.id] = note_time_to_unix(work_date, spot.start_time)
+        except ValueError:
+            pass  # unparseable start -> unbounded; it skips at match time anyway
+        try:
+            if spot.stop_time:
+                stops[spot.id] = note_time_to_unix(work_date, spot.stop_time)
+        except ValueError:
+            pass  # unparseable stop -> fall back to start-midpoint cut
+    ordered = sorted(starts, key=lambda sid: starts[sid])
+    spans = [(starts[sid], stops.get(sid)) for sid in ordered]
+    bounds_by_id = dict(zip(ordered, non_overlapping_bounds(spans), strict=True))
+
+    for spot in spots:
+        lo_bound, hi_bound = bounds_by_id.get(spot.id, (None, None))
         matched = match_spot(
             spot.nr,
             readings,
@@ -174,6 +204,8 @@ def run_match(
             offset,
             temperature,
             pressure,
+            lo_bound=lo_bound,
+            hi_bound=hi_bound,
         )
         logs.extend((m.severity, m.message) for m in matched.logs)
         if matched.skipped:

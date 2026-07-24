@@ -120,6 +120,8 @@ export interface FluxLadder {
 
 export interface GasPoint {
   t_s: number
+  /** Absolute time (naive local wall-clock as unix seconds) — for the clock axis. */
+  t_unix: number
   value: number
   in_window: boolean
 }
@@ -127,6 +129,8 @@ export interface GasPoint {
 /** A faint wider-context raw point around a spot (display-only). */
 export interface ContextPoint {
   t_s: number
+  /** Absolute time (naive local wall-clock as unix seconds) — for the clock axis. */
+  t_unix: number
   value: number
 }
 

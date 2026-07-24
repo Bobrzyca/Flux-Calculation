@@ -10,7 +10,9 @@ from app.matching.match import (
     match_spot,
     nearest_pressure,
     nearest_temperature,
+    non_overlapping_bounds,
     note_time_to_unix,
+    overlap_cut,
     slice_spot,
 )
 from app.parsing.pressure import PressureReading
@@ -161,3 +163,77 @@ def test_shared_gps_spots_stay_distinct() -> None:
     dark = match_spot(8, stream, "09:05:00", "09:07:00", WORK_DATE, 0, temp, press)
     assert light.nr != dark.nr
     assert light.readings["timestamp"].min() != dark.readings["timestamp"].min()
+
+
+def test_overlap_cut_splits_the_gap() -> None:
+    # Cut sits between the earlier spot's stop and the later spot's start.
+    assert overlap_cut(0.0, 120.0, 300.0) == 210.0
+    # No usable stop -> midpoint of the two starts.
+    assert overlap_cut(0.0, None, 300.0) == 150.0
+    # A stop that runs past the next start falls back to the start midpoint.
+    assert overlap_cut(0.0, 400.0, 300.0) == 150.0
+    # Always clamped inside [prev_start, next_start].
+    assert overlap_cut(100.0, 100.0, 100.0) == 100.0
+
+
+def test_non_overlapping_bounds_share_one_cut() -> None:
+    bounds = non_overlapping_bounds([(0.0, 120.0), (300.0, 420.0), (600.0, None)])
+    assert bounds[0][0] is None  # first: no lower limit
+    assert bounds[-1][1] is None  # last: no upper limit
+    # Each interior boundary is one shared cut (upper of i == lower of i+1).
+    assert bounds[0][1] == bounds[1][0]
+    assert bounds[1][1] == bounds[2][0]
+    assert bounds[0][1] == 210.0  # midpoint of stop 120 and next start 300
+
+
+def test_match_spot_bounds_prevent_overlap() -> None:
+    # Two closely-spaced spots whose default windows would overlap: with a shared
+    # cut, neither reads the other's readings (no double-counted data).
+    stream, temp, press = _stream(), _temperature(), _pressure()
+    # starts 09:01:00 (BASE+60) and 09:05:00 (BASE+300); cut at their midpoint.
+    spans: list[tuple[float, float | None]] = [
+        (
+            note_time_to_unix(WORK_DATE, "09:01:00"),
+            note_time_to_unix(WORK_DATE, "09:03:00"),
+        ),
+        (
+            note_time_to_unix(WORK_DATE, "09:05:00"),
+            note_time_to_unix(WORK_DATE, "09:07:00"),
+        ),
+    ]
+    (lo0, hi0), (lo1, hi1) = non_overlapping_bounds(spans)
+    a = match_spot(
+        1,
+        stream,
+        "09:01:00",
+        "09:03:00",
+        WORK_DATE,
+        0,
+        temp,
+        press,
+        lo_bound=lo0,
+        hi_bound=hi0,
+    )
+    b = match_spot(
+        2,
+        stream,
+        "09:05:00",
+        "09:07:00",
+        WORK_DATE,
+        0,
+        temp,
+        press,
+        lo_bound=lo1,
+        hi_bound=hi1,
+    )
+    assert not a.skipped and not b.skipped
+    # No timestamp appears in both spots' readings.
+    overlap = set(a.readings["timestamp"]).intersection(b.readings["timestamp"])
+    assert overlap == set()
+    # Without the bounds the same two spots DO share readings (the old behaviour).
+    a_free = match_spot(1, stream, "09:01:00", "09:03:00", WORK_DATE, 0, temp, press)
+    b_free = match_spot(2, stream, "09:05:00", "09:07:00", WORK_DATE, 0, temp, press)
+    shared = set(a_free.readings["timestamp"]).intersection(
+        b_free.readings["timestamp"]
+    )
+    assert shared  # they overlapped before the fix

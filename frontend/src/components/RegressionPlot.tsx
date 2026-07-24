@@ -15,6 +15,12 @@ const Plot = createPlotlyComponent(Plotly)
  * The fit window (start+30 s → start+5 min 30 s) is shaded; out-of-window
  * points are muted. Zoom/pan enabled. A text summary sits alongside so the fit
  * is not conveyed by the chart alone (a11y).
+ *
+ * The x-axis is **real clock time** (`t_unix`, seconds), matching the overview
+ * graph — the seconds-in-chamber value alone wasn't much help when lining a
+ * window up against the field notes. `t_unix` is naive local wall-clock stored
+ * as unix seconds; Plotly renders a date axis in UTC, so ticks read as the
+ * original local field time.
  */
 export function RegressionPlot({
   gas,
@@ -28,15 +34,21 @@ export function RegressionPlot({
   const dark = resolved === 'dark'
 
   const { data, layout, windowStart, windowEnd } = useMemo(() => {
+    // Clock (ms) for the x-axis; seconds (t_s) still drive the fit-line maths.
+    const toMs = (p: { t_unix: number }) => p.t_unix * 1000
     const inWin = detail.points.filter((p) => p.in_window)
     const outWin = detail.points.filter((p) => !p.in_window)
-    const ws = inWin.length ? inWin[0].t_s : 0
-    const we = inWin.length ? inWin[inWin.length - 1].t_s : 0
+    const first = inWin.length ? inWin[0] : null
+    const last = inWin.length ? inWin[inWin.length - 1] : null
+    const ws = first ? toMs(first) : 0
+    const we = last ? toMs(last) : 0
 
+    // The regression line: y = intercept + slope·(seconds from t0), placed at the
+    // in-window endpoints' clock time on the x-axis.
     const lineX = [ws, we]
     const lineY = [
-      detail.fit.intercept + detail.fit.slope * ws,
-      detail.fit.intercept + detail.fit.slope * we,
+      detail.fit.intercept + detail.fit.slope * (first ? first.t_s : 0),
+      detail.fit.intercept + detail.fit.slope * (last ? last.t_s : 0),
     ]
 
     // Wider raw record around the spot (display-only) drawn faintly behind the
@@ -47,16 +59,16 @@ export function RegressionPlot({
 
     const traces: Data[] = [
       {
-        x: ctx.map((p) => p.t_s),
+        x: ctx.map(toMs),
         y: ctx.map((p) => p.value),
         mode: 'markers',
         type: 'scattergl',
         name: 'Surrounding record',
         marker: { color: VIZ.muted, size: 3, opacity: 0.25 },
-        hovertemplate: '%{x}s: %{y}<extra>context</extra>',
+        hovertemplate: '%{x|%H:%M:%S}: %{y}<extra>context</extra>',
       },
       {
-        x: outWin.map((p) => p.t_s),
+        x: outWin.map(toMs),
         y: outWin.map((p) => p.value),
         mode: 'markers',
         type: 'scattergl',
@@ -64,16 +76,16 @@ export function RegressionPlot({
         // so the whole line reads as one measurement while you pick the window.
         name: 'Outside window (recorded)',
         marker: { color, size: 4, opacity: 0.35 },
-        hovertemplate: '%{x}s: %{y}<extra>outside window</extra>',
+        hovertemplate: '%{x|%H:%M:%S}: %{y}<extra>outside window</extra>',
       },
       {
-        x: inWin.map((p) => p.t_s),
+        x: inWin.map(toMs),
         y: inWin.map((p) => p.value),
         mode: 'markers',
         type: 'scattergl',
         name: 'In fit window',
         marker: { color, size: 5 },
-        hovertemplate: '%{x}s: %{y}<extra>in fit window</extra>',
+        hovertemplate: '%{x|%H:%M:%S}: %{y}<extra>in fit window</extra>',
       },
       {
         x: lineX,
@@ -97,7 +109,9 @@ export function RegressionPlot({
       font: { color: text, size: 12 },
       showlegend: false,
       xaxis: {
-        title: { text: 'Time in chamber (s)' },
+        type: 'date',
+        title: { text: 'Time (clock)' },
+        tickformat: '%H:%M:%S',
         gridcolor: grid,
         zeroline: false,
       },
@@ -123,7 +137,15 @@ export function RegressionPlot({
       ],
     }
 
-    return { data: traces, layout, windowStart: ws, windowEnd: we }
+    // Clock strings for the text alternative (UTC slice = the naive local time).
+    const clock = (ms: number) =>
+      ms ? new Date(ms).toISOString().slice(11, 19) : '—'
+    return {
+      data: traces,
+      layout,
+      windowStart: clock(ws),
+      windowEnd: clock(we),
+    }
   }, [detail, color, dark, gas])
 
   return (
@@ -139,7 +161,7 @@ export function RegressionPlot({
       {/* Text alternative — the fit conveyed without the chart. */}
       <figcaption className="sr-only">
         {gas} concentration in {detail.unit} over time. Linear fit over the
-        window {windowStart} to {windowEnd} seconds: slope {detail.fit.slope},
+        window {windowStart} to {windowEnd} (clock): slope {detail.fit.slope},
         R² {formatR2(detail.fit.r2)}, from {detail.fit.n_points} points (
         {detail.fit.n_dropped_nan} nan dropped).
       </figcaption>

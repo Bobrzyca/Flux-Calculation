@@ -327,6 +327,16 @@ export function SpotDetail({
                 >
                   +30 s
                 </Button>
+                {/* Commit the window from here too, so the end crop can be applied
+                    without scrolling back up to the start row's Apply. */}
+                <Button
+                  size="sm"
+                  onClick={applyOffset}
+                  disabled={saving || endInvalid}
+                  aria-label="Apply the cropped fit window"
+                >
+                  Apply
+                </Button>
                 {endInvalid && (
                   <span className="text-xs text-danger">
                     End must be after the start.

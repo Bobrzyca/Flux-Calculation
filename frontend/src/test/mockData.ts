@@ -485,6 +485,9 @@ function buildGasDetail(
   const base = gas === 'CO2' ? 412 : 2.05 // ppm; CH4 shown in ppm here
   const r2 = gas === 'CO2' ? spec.r2co2 : spec.r2ch4
   const noise = (1 - r2) * (gas === 'CO2' ? 6 : 0.06)
+  // Absolute clock anchor for the spot: an arbitrary campaign midnight plus the
+  // recorded start's seconds-of-day, so the detail plot shows real clock time.
+  const spotBaseUnix = 1_782_950_400 + toSeconds(spec.start)
 
   const points: GasPoint[] = []
   for (let t = 0; t < totalPoints; t++) {
@@ -493,6 +496,7 @@ function buildGasDetail(
     const value = base + slope * t + drift + (rng() - 0.5) * 2 * noise
     points.push({
       t_s: t,
+      t_unix: spotBaseUnix + t,
       value: round(value, gas === 'CO2' ? 2 : 4),
       in_window: inWindow,
     })
