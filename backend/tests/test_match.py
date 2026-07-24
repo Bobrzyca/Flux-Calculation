@@ -8,6 +8,7 @@ import pandas as pd
 from app.matching.match import (
     NO_PRESSURE,
     align_temperature_to_date,
+    compute_spot_bounds,
     match_spot,
     nearest_pressure,
     nearest_temperature,
@@ -233,6 +234,25 @@ def test_non_overlapping_bounds_share_one_cut() -> None:
     assert bounds[0][1] == bounds[1][0]
     assert bounds[1][1] == bounds[2][0]
     assert bounds[0][1] == 210.0  # midpoint of stop 120 and next start 300
+
+
+def test_compute_spot_bounds_orders_and_skips_bad_times() -> None:
+    # Unordered spots, one with an unparseable start: bounds come back keyed by id,
+    # ordered by start under the hood, and the bad-start spot is omitted (unbounded).
+    spots = [
+        ("b", "09:05:00", "09:07:00"),
+        ("a", "09:01:00", "09:03:00"),
+        ("bad", "9h00", "09:10:00"),
+        ("c", "09:12:00", "09:14:00"),
+    ]
+    bounds = compute_spot_bounds(spots, WORK_DATE)
+    assert "bad" not in bounds  # unparseable start -> unbounded (skips at match)
+    assert set(bounds) == {"a", "b", "c"}
+    assert bounds["a"][0] is None  # earliest: no lower bound
+    assert bounds["c"][1] is None  # latest: no upper bound
+    # Shared cut between a and b (a's upper == b's lower).
+    assert bounds["a"][1] == bounds["b"][0]
+    assert bounds["b"][1] == bounds["c"][0]
 
 
 def test_match_spot_bounds_prevent_overlap() -> None:

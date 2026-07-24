@@ -191,6 +191,37 @@ def align_temperature_to_date(
     return out, shift_days
 
 
+def compute_spot_bounds(
+    spots: list[tuple[str, str, str]], work_date: date
+) -> dict[str, tuple[float | None, float | None]]:
+    """Per-spot ``(lo, hi)`` unix window bounds keyed by spot id (no overlaps).
+
+    ``spots`` is ``(id, start_time, stop_time)`` in any order (``HH:MM[:SS]``
+    strings). Spots are ordered by their parsed start; one shared cut is placed
+    between each adjacent pair (see ``non_overlapping_bounds``/``overlap_cut``).
+    A spot whose start time is missing/unparseable is omitted from the result, so
+    the caller leaves it unbounded (it skips at match time anyway). Keeping this
+    assembly here (not in the router) means the times are parsed once and the
+    whole thing is unit-testable without a web request.
+    """
+    parsed: list[tuple[str, float, float | None]] = []
+    for sid, start, stop in spots:
+        try:
+            start_unix = note_time_to_unix(work_date, start) if start else None
+        except ValueError:
+            start_unix = None
+        if start_unix is None:
+            continue  # unparseable start -> unbounded; skips at match time
+        try:
+            stop_unix = note_time_to_unix(work_date, stop) if stop else None
+        except ValueError:
+            stop_unix = None
+        parsed.append((sid, start_unix, stop_unix))
+    parsed.sort(key=lambda row: row[1])
+    bounds = non_overlapping_bounds([(start, stop) for _, start, stop in parsed])
+    return {sid: b for (sid, _, _), b in zip(parsed, bounds, strict=True)}
+
+
 def nearest_temperature(temperature: pd.DataFrame, t: float) -> float | None:
     """Temperature (°C) nearest in time to ``t``; None if the series is empty."""
     if temperature.empty:

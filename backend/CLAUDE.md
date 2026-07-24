@@ -365,10 +365,11 @@ structured `LogMessage`s). **`match_spot` slices a window with a
 rows include data on both sides of the recorded start — the raw material the fit
 step's backward search and the user's backward manual shift need. Spots are matched
 independently, so a shared GPS (light/dark pair or redo) stays distinct.
-**No overlapping windows:** the match endpoint computes a single cut between each
-adjacent pair of spots (ordered by recorded start) via
+**No overlapping windows:** `compute_spot_bounds` (pure, in `matching/`) computes a
+single cut between each adjacent pair of spots (ordered by recorded start) via
 `non_overlapping_bounds`/`overlap_cut` — the midpoint of the earlier spot's stop
-and the later spot's start — and passes it to `match_spot` as `lo_bound`/`hi_bound`,
+and the later spot's start — and the match endpoint passes each to `match_spot` as
+`lo_bound`/`hi_bound`,
 which clamp the slice so **two spots are never computed on the same readings**
 (the bounds only ever narrow a window, so far-apart spots are unaffected). **Note:**
 analyses matched before the lead margin existed store no pre-start data — re-run the

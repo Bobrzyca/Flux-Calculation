@@ -22,9 +22,8 @@ from app.flux.constants import DEFAULT_PRESSURE_HPA, FIT_WINDOW_SECONDS
 from app.flux.pipeline import fit_spot
 from app.matching.match import (
     align_temperature_to_date,
+    compute_spot_bounds,
     match_spot,
-    non_overlapping_bounds,
-    note_time_to_unix,
 )
 from app.parsing.li7810 import parse_li7810
 from app.parsing.pressure import parse_pressure
@@ -187,26 +186,11 @@ def run_match(
     spots_computed = 0
     flux_count = 0
 
-    # Per-spot window bounds so two spots are never computed on the same readings.
-    # Order the spots with a parseable recorded start by that start, place one cut
-    # between each adjacent pair, and clamp each spot's sliced window to its cuts.
-    # Spots with an unparseable start are left unbounded (they skip below anyway).
-    starts: dict[str, float] = {}
-    stops: dict[str, float | None] = {}
-    for spot in spots:
-        try:
-            if spot.start_time:
-                starts[spot.id] = note_time_to_unix(work_date, spot.start_time)
-        except ValueError:
-            pass  # unparseable start -> unbounded; it skips at match time anyway
-        try:
-            if spot.stop_time:
-                stops[spot.id] = note_time_to_unix(work_date, spot.stop_time)
-        except ValueError:
-            pass  # unparseable stop -> fall back to start-midpoint cut
-    ordered = sorted(starts, key=lambda sid: starts[sid])
-    spans = [(starts[sid], stops.get(sid)) for sid in ordered]
-    bounds_by_id = dict(zip(ordered, non_overlapping_bounds(spans), strict=True))
+    # Per-spot window bounds so two spots are never computed on the same readings
+    # (clamps each slice to a cut between adjacent spots; far-apart spots untouched).
+    bounds_by_id = compute_spot_bounds(
+        [(spot.id, spot.start_time, spot.stop_time) for spot in spots], work_date
+    )
 
     for spot in spots:
         lo_bound, hi_bound = bounds_by_id.get(spot.id, (None, None))
